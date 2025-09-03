@@ -2,8 +2,6 @@ package me.earzuchan.dynactrl.demoapp
 
 import android.annotation.SuppressLint
 import android.content.Context
-import android.media.MediaExtractor
-import android.media.MediaFormat
 import android.net.Uri
 import android.os.Build
 import android.os.Bundle
@@ -25,8 +23,6 @@ import androidx.compose.ui.platform.LocalContext
 import androidx.compose.ui.unit.dp
 import androidx.media3.common.MediaItem
 import androidx.media3.common.Player
-import androidx.media3.common.audio.AudioProcessor
-import androidx.media3.common.audio.BaseAudioProcessor
 import androidx.media3.common.util.UnstableApi
 import androidx.media3.exoplayer.DefaultRenderersFactory
 import androidx.media3.exoplayer.ExoPlayer
@@ -35,11 +31,12 @@ import androidx.media3.exoplayer.audio.DefaultAudioSink
 import kotlinx.coroutines.CoroutineScope
 import kotlinx.coroutines.Dispatchers
 import kotlinx.coroutines.launch
+import kotlinx.coroutines.withContext
+import me.earzuchan.dynactrl.exoplayer.DynamicsProcessor
+import me.earzuchan.dynactrl.models.AudioLoudnessInfo
+import me.earzuchan.dynactrl.utilities.LightweightLoudnessAnalyzer
 import java.io.File
-import java.nio.ByteBuffer
-import java.nio.ByteOrder
 import kotlin.math.*
-import me.earzuchan.dynactrl.NativeLib
 
 @Composable
 fun AppTheme(
@@ -87,7 +84,6 @@ class MainActivity : ComponentActivity() {
         super.onCreate(savedInstanceState)
         enableEdgeToEdge()
 
-        NativeLib.test()
 
         // 初始化播放器
         initializePlayers()
@@ -127,11 +123,11 @@ class MainActivity : ComponentActivity() {
                                         loudnessInfo != null -> {
                                             val info = loudnessInfo!!
                                             Text("响度: ${String.format("%.1f", info.lufs)} LUFS", style = bodySmall)
-                                            Text("峰值: ${String.format("%.1f", info.peak)} dBFS", style = bodySmall)
+                                            /*Text("峰值: ${String.format("%.1f", info.peak)} dBFS", style = bodySmall)
                                             Text(
                                                 "动态范围: ${String.format("%.1f", info.dynamicRange)} dB",
                                                 style = bodySmall
-                                            )
+                                            )*/
                                         }
 
                                         selectedFile != null -> {
@@ -212,13 +208,13 @@ class MainActivity : ComponentActivity() {
             try {
                 val analysis = loudnessAnalyzer.analyzeFile(file)
 
-                runOnUiThread {
+                withContext(Dispatchers.Main) {
                     loudnessInfo = analysis
                     isAnalyzing = false
                     dynamicsProcessor.setCurrentTrackLoudness(analysis)
                 }
             } catch (e: Exception) {
-                runOnUiThread {
+                withContext(Dispatchers.Main)  {
                     isAnalyzing = false
                     e.printStackTrace()
                 }
@@ -288,6 +284,7 @@ class MainActivity : ComponentActivity() {
     }
 }
 
+/*
 data class AudioLoudnessInfo(
     val lufs: Float, // 类LUFS响度
     val peak: Float, // 真峰值 (dBFS)
@@ -632,4 +629,4 @@ class DynamicsProcessor : BaseAudioProcessor() {
         super.onReset()
         clear()
     }
-}
+}*/

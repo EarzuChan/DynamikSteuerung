@@ -6,6 +6,7 @@ import androidx.media3.common.audio.BaseAudioProcessor
 import androidx.media3.common.C
 import androidx.media3.common.util.UnstableApi
 import me.earzuchan.dynactrl.models.AudioLoudnessInfo
+import java.lang.System.loadLibrary
 import java.nio.ByteBuffer
 
 /**
@@ -14,7 +15,6 @@ import java.nio.ByteBuffer
  */
 @OptIn(UnstableApi::class)
 class DynamicsProcessor : BaseAudioProcessor() {
-
     private var loudnessInfo: AudioLoudnessInfo? = null
     private var currentScale: Float = 1.0f
     private var targetScale: Float = 1.0f
@@ -42,7 +42,6 @@ class DynamicsProcessor : BaseAudioProcessor() {
      * Called by ExoPlayer when audio format changes (including at track start).
      */
     override fun onConfigure(inputAudioFormat: AudioProcessor.AudioFormat): AudioProcessor.AudioFormat {
-        val channelCount = inputAudioFormat.channelCount
         sampleRate = inputAudioFormat.sampleRate
         val encoding = inputAudioFormat.encoding
 
@@ -50,24 +49,14 @@ class DynamicsProcessor : BaseAudioProcessor() {
             C.ENCODING_PCM_16BIT -> 2
             C.ENCODING_PCM_24BIT -> 3
             C.ENCODING_PCM_32BIT, C.ENCODING_PCM_FLOAT -> 4
-            else -> {
-                // Unsupported encoding
-                return AudioProcessor.AudioFormat(
-                    inputAudioFormat.sampleRate,
-                    inputAudioFormat.channelCount,
-                    inputAudioFormat.encoding
-                )
-            }
+            // Unsupported encoding
+            else -> return inputAudioFormat
         }
 
         samplesPerFrame = if (sampleRate > 0) (sampleRate * fadeTimeMs / 1000L).toInt() else 1
 
         // Output format is the same as input
-        return AudioProcessor.AudioFormat(
-            inputAudioFormat.sampleRate,
-            inputAudioFormat.channelCount,
-            inputAudioFormat.encoding
-        )
+        return inputAudioFormat
     }
 
     /**
@@ -112,10 +101,8 @@ class DynamicsProcessor : BaseAudioProcessor() {
     }
 
     private fun processPcmFloat(
-        inputBuffer: ByteBuffer,
-        outputBuffer: ByteBuffer,
-        sampleCount: Int,
-        channelCount: Int
+        inputBuffer: ByteBuffer, outputBuffer: ByteBuffer,
+        sampleCount: Int, channelCount: Int
     ) {
         val inputSamples = FloatArray(sampleCount * channelCount)
         inputBuffer.asFloatBuffer().get(inputSamples)
@@ -184,6 +171,8 @@ class DynamicsProcessor : BaseAudioProcessor() {
     )
 
     companion object {
+        init { loadLibrary("dynactrl") }
+
         // JNI function for native processing (optional, for complex DSP)
         @JvmStatic
         external fun nativeProcessAudio(

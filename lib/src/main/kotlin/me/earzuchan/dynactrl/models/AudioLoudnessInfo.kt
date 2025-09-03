@@ -1,5 +1,6 @@
 package me.earzuchan.dynactrl.models
 
+import java.lang.System.loadLibrary
 import kotlin.math.pow
 
 /**
@@ -16,6 +17,8 @@ data class AudioLoudnessInfo(val lufs: Float, val sampleRate: Int, val channels:
 
 
     companion object {
+        init { loadLibrary("dynactrl") }
+
         // JNI function declarations
         @JvmStatic
         external fun nativeGetLufs(nativePtr: Long): Float

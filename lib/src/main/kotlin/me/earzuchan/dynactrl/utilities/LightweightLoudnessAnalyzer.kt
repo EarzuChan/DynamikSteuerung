@@ -3,6 +3,7 @@ package me.earzuchan.dynactrl.utilities
 import me.earzuchan.dynactrl.models.AudioLoudnessInfo
 import java.io.File
 import java.io.IOException
+import java.lang.System.loadLibrary
 
 /**
  * Lightweight analyzer that pre-processes audio files for loudness normalization.
@@ -28,25 +29,38 @@ class LightweightLoudnessAnalyzer {
         // Call native analysis function
         val nativePtr = nativeAnalyzeFile(audioFile.absolutePath)
 
-        if (nativePtr == 0L) throw IOException("Failed to analyze file: ${audioFile.absolutePath}")
+        // Would be read from the file
+        // Would be read from the file
+        // Would be calculated from file size and format
+        when (nativePtr) {
+            0L -> throw IOException("Failed to analyze file: ${audioFile.absolutePath}")
+            
+            -1L -> throw IOException("Internal error")
 
-        // Get the measured values from native code
-        val measuredLufs = AudioLoudnessInfo.nativeGetLufs(nativePtr)
-        val measuredScale = AudioLoudnessInfo.nativeGetTargetScale(nativePtr)
+            // Get the measured values from native code
+            // Clean up the native pointer immediately after getting values
+            // Return the analysis results
+            else -> {
+                val measuredLufs = AudioLoudnessInfo.nativeGetLufs(nativePtr)
+                val measuredScale = AudioLoudnessInfo.nativeGetTargetScale(nativePtr)
 
-        // Clean up the native pointer immediately after getting values
-        AudioLoudnessInfo.nativeDestroy(nativePtr)
+                // Clean up the native pointer immediately after getting values
+                AudioLoudnessInfo.nativeDestroy(nativePtr)
 
-        // Return the analysis results
-        return AudioLoudnessInfo(
-            lufs = measuredLufs,
-            sampleRate = 44100, // Would be read from the file
-            channels = 2,       // Would be read from the file
-            durationSeconds = 0f // Would be calculated from file size and format
-        )
+                // Return the analysis results
+                return AudioLoudnessInfo(
+                    lufs = measuredLufs,
+                    sampleRate = 44100, // Would be read from the file
+                    channels = 2,       // Would be read from the file
+                    durationSeconds = 0f // Would be calculated from file size and format
+                )
+            }
+        }
     }
 
     companion object {
+        init { loadLibrary("dynactrl") }
+
         // JNI function declaration
         @JvmStatic
         external fun nativeAnalyzeFile(filePath: String): Long

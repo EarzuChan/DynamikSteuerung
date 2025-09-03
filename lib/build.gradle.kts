@@ -59,7 +59,7 @@ val buildRustLibrary = tasks.register("buildRustLibrary") {
     group = "rust"
     description = "Build Rust native library"
 
-    // dependsOn(cleanRustLibrary)
+    dependsOn(cleanRustLibrary)
 
     // 使用 Provider API 来延迟计算路径
     val nativeDir = project.layout.projectDirectory.dir("../native")

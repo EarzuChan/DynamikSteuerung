@@ -3,7 +3,7 @@ use jni::objects::{JClass, JString};
 use jni::sys::{jboolean, jfloat, jint, jlong};
 
 #[unsafe(no_mangle)]
-pub unsafe extern "system" fn Java_me_earzuchan_dynactrl_utilities_LightweightLoudnessAnalyzer_analyzeFile(
+pub extern "C" fn Java_me_earzuchan_dynactrl_utilities_LightweightLoudnessAnalyzer_nativeAnalyzeFile(
     mut env: JNIEnv,
     _class: JClass,
     file_path: JString,
@@ -11,19 +11,21 @@ pub unsafe extern "system" fn Java_me_earzuchan_dynactrl_utilities_LightweightLo
     // Convert Java string to Rust string
     let file_path_str = match env.get_string(&file_path) {
         Ok(s) => s.to_string_lossy().into_owned(),
-        Err(_) => return 0,
+        Err(_) => return -1,
     };
 
     // Analyze the actual file
     match crate::analysis::analyze_audio_file(&file_path_str) {
         Ok(info) => Box::into_raw(Box::new(info)) as jlong,
-        Err(_) => 0, // Return null pointer on error
+        Err(e) => {
+            eprintln!("RUST ERR: {}", e); // 写不出错误
+            0
+        } // Return null pointer on error
     }
-
 }
 
 #[unsafe(no_mangle)]
-pub unsafe extern "system" fn Java_me_earzuchan_dynactrl_models_AudioLoudnessInfo_getLufs(
+pub unsafe extern "C" fn Java_me_earzuchan_dynactrl_models_AudioLoudnessInfo_nativeGetLufs(
     _env: JNIEnv,
     _class: JClass,
     ptr: jlong,
@@ -37,7 +39,7 @@ pub unsafe extern "system" fn Java_me_earzuchan_dynactrl_models_AudioLoudnessInf
 }
 
 #[unsafe(no_mangle)]
-pub unsafe extern "system" fn Java_me_earzuchan_dynactrl_models_AudioLoudnessInfo_getTargetScale(
+pub unsafe extern "C" fn Java_me_earzuchan_dynactrl_models_AudioLoudnessInfo_nativeGetTargetScale(
     _env: JNIEnv,
     _class: JClass,
     ptr: jlong,
@@ -51,7 +53,7 @@ pub unsafe extern "system" fn Java_me_earzuchan_dynactrl_models_AudioLoudnessInf
 }
 
 #[unsafe(no_mangle)]
-pub unsafe extern "system" fn Java_me_earzuchan_dynactrl_models_AudioLoudnessInfo_destroy(
+pub unsafe extern "C" fn Java_me_earzuchan_dynactrl_models_AudioLoudnessInfo_nativeDestroy(
     _env: JNIEnv,
     _class: JClass,
     ptr: jlong,
@@ -62,7 +64,7 @@ pub unsafe extern "system" fn Java_me_earzuchan_dynactrl_models_AudioLoudnessInf
 }
 
 #[unsafe(no_mangle)]
-pub unsafe extern "system" fn Java_me_earzuchan_dynactrl_exoplayer_DynamicsProcessor_processAudio(
+pub unsafe extern "C" fn Java_me_earzuchan_dynactrl_exoplayer_DynamicsProcessor_nativeProcessAudio(
     _env: JNIEnv,
     _class: JClass,
     loudness_info_ptr: jlong,
