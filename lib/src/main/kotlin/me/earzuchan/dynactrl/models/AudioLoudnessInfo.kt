@@ -7,7 +7,7 @@ import kotlin.math.pow
  * Data class holding loudness analysis information for an audio file.
  * This replaces real-time loudness calculation during playback.
  */
-data class AudioLoudnessInfo(val lufs: Float, val sampleRate: Int, val channels: Int, val durationSeconds: Float) {
+data class AudioLoudnessInfo(val lufs: Float) {
     /**
      * Calculate the scaling factor needed to normalize to -18 dB LUFS reference
      */
@@ -17,8 +17,6 @@ data class AudioLoudnessInfo(val lufs: Float, val sampleRate: Int, val channels:
 
 
     companion object {
-        init { loadLibrary("dynactrl") }
-
         // JNI function declarations
         @JvmStatic
         external fun nativeGetLufs(nativePtr: Long): Float
@@ -60,7 +58,7 @@ data class AudioLoudnessInfo(val lufs: Float, val sampleRate: Int, val channels:
     }
 
     override fun toString(): String =
-        "AudioLoudnessInfo(lufs=%.2f, targetScale=%.3f, duration=%.1fs, channels=$channels, sampleRate=$sampleRate)".format(
-            getMeasuredLufs(), getCalculatedTargetScale(), durationSeconds
+        "AudioLoudnessInfo(lufs=%.2f, targetScale=%.3f)".format(
+            getMeasuredLufs(), getCalculatedTargetScale()
         )
 }

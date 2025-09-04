@@ -14,10 +14,10 @@ pub const EBUR128_LEFT_SURROUND: i32 = 4;
 pub const EBUR128_RIGHT_SURROUND: i32 = 5;
 
 // Mode constants
-pub const EBUR128_MODE_I: usize = 5;     // Integrated loudness
-pub const EBUR128_MODE_S: usize = 3;     // Short-term loudness
-pub const EBUR128_MODE_M: usize = 1;     // Momentary loudness
-pub const EBUR128_MODE_LRA: usize = 11;  // Loudness range
+pub const EBUR128_MODE_I: usize = 5; // Integrated loudness
+pub const EBUR128_MODE_S: usize = 3; // Short-term loudness
+pub const EBUR128_MODE_M: usize = 1; // Momentary loudness
+pub const EBUR128_MODE_LRA: usize = 11; // Loudness range
 
 #[derive(Clone)]
 pub struct GatingBlock {

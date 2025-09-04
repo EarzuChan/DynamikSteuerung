@@ -49,26 +49,15 @@ class LightweightLoudnessAnalyzer {
 
                 // Return the analysis results
                 return AudioLoudnessInfo(
-                    lufs = measuredLufs,
-                    sampleRate = 44100, // Would be read from the file
-                    channels = 2,       // Would be read from the file
-                    durationSeconds = 0f // Would be calculated from file size and format
+                    lufs = measuredLufs
                 )
             }
         }
     }
 
     companion object {
-        init { loadLibrary("dynactrl") }
-
         // JNI function declaration
         @JvmStatic
         external fun nativeAnalyzeFile(filePath: String): Long
-
-        /**
-         * Test function for synthetic audio analysis
-         */
-        @JvmStatic
-        external fun analyzeSyntheticAudio(sampleRate: Int, channels: Int): AudioLoudnessInfo
     }
 }

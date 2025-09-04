@@ -171,8 +171,6 @@ class DynamicsProcessor : BaseAudioProcessor() {
     )
 
     companion object {
-        init { loadLibrary("dynactrl") }
-
         // JNI function for native processing (optional, for complex DSP)
         @JvmStatic
         external fun nativeProcessAudio(

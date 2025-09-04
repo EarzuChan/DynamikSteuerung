@@ -30,14 +30,18 @@ impl WavHeader {
 }
 
 /// Analyze an audio file for loudness
-pub fn analyze_audio_file(file_path: &str) -> Result<AudioLoudnessInfo, String> {
+pub fn
+analyze_audio_file(file_path: &str) -> Result<AudioLoudnessInfo, String> {
     let mut file = File::open(file_path)
         .map_err(|e| format!("Failed to open file {}: {}", file_path, e))?;
 
     // Try to read file as WAV first
-    if let Ok(loudness_info) = analyze_wav_file(&mut file) {
-        return Ok(loudness_info);
-    }
+    return match analyze_wav_file(&mut file) {
+        Ok(s) => Ok(s),
+        Err(e) => Err(format!("Failed to analyze WAV audio file: {}", e)),
+    };
+
+    // BREAK THE KODE
 
     // Reset file position for other formats
     file.seek(SeekFrom::Start(0)).map_err(|e| format!("Failed to seek file: {}", e))?;
@@ -49,7 +53,7 @@ pub fn analyze_audio_file(file_path: &str) -> Result<AudioLoudnessInfo, String> 
 
 fn analyze_wav_file(file: &mut File) -> Result<AudioLoudnessInfo, String> {
     // Read WAV header
-    let mut header_bytes = [0u8; std::mem::size_of::<WavHeader>()];
+    let mut header_bytes = [0u8; size_of::<WavHeader>()];
     file.read_exact(&mut header_bytes)
         .map_err(|e| format!("Failed to read WAV header: {}", e))?;
 
@@ -148,38 +152,5 @@ fn analyze_wav_file(file: &mut File) -> Result<AudioLoudnessInfo, String> {
         sample_rate,
         channels,
         duration_seconds,
-    ))
-}
-
-/// Test function for analyzing synthetic audio data
-pub fn analyze_synthetic_audio(sample_rate: usize, channels: usize) -> Result<AudioLoudnessInfo, String> {
-    let mut state = Ebur128State::new(channels, sample_rate, EBUR128_MODE_I)
-        .map_err(|e| format!("Failed to initialize analyzer: {}", e))?;
-
-    // Generate 10 seconds of pink noise at 1 kHz
-    let frames_per_second = sample_rate;
-    let total_frames: usize = sample_rate * 10;
-    let mut buffer = vec![0.0f32; frames_per_second * channels];
-
-    for _ in (0..total_frames).step_by(frames_per_second) {
-        // Generate pink noise (this is a simplified version)
-        for i in 0..frames_per_second * channels {
-            // Simple white noise modified to approximate pink noise
-            let white_noise = (fastrand::f32() - 0.5) * 2.0;
-            buffer[i] = white_noise * 0.1; // Reduce amplitude
-        }
-
-        state.add_frames_float(&buffer, frames_per_second)
-            .map_err(|e| format!("Failed to process audio frames: {}", e))?;
-    }
-
-    let global_loudness = state.loudness_global()
-        .unwrap_or(-70.0);
-
-    Ok(AudioLoudnessInfo::new(
-        global_loudness,
-        sample_rate,
-        channels,
-        total_frames as f32 / sample_rate as f32,
     ))
 }

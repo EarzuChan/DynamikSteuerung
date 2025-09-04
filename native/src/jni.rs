@@ -1,6 +1,70 @@
 use jni::JNIEnv;
-use jni::objects::{JClass, JString};
+use jni::objects::GlobalRef;
+use jni::objects::{JClass, JObject, JString, JValue};
 use jni::sys::{jboolean, jfloat, jint, jlong};
+use std::sync::Mutex;
+
+static LOGGER: Mutex<Option<GlobalRef>> = Mutex::new(None);
+
+#[unsafe(no_mangle)]
+pub unsafe extern "C" fn Java_me_earzuchan_dynactrl_DynaCtrlKt_nativeInit(
+    mut env: JNIEnv,
+    _class: JClass,
+    logger: JObject,
+) -> jint {
+    if !logger.is_null() {
+        match env.new_global_ref(logger) {
+            Ok(global_ref) => {
+                let mut logger_lock = LOGGER.lock().unwrap();
+                *logger_lock = Some(global_ref);
+
+                // log_to_java(&mut env, "RUST_TEST", "Test the fxxking logger");
+
+                1 // ALRIGHT
+            }
+            Err(_e) => 0, // STH went WRONG
+        }
+    } else {
+        -1 // LOGGR is NULL
+    }
+}
+
+#[unsafe(no_mangle)]
+pub unsafe extern "C" fn Java_me_earzuchan_dynactrl_DynaCtrlKt_nativeTestLogger(
+    mut env: JNIEnv,
+    _class: JClass,
+) -> jint {
+   log_to_java(&mut env, "RUST_TEST", "Test the fxxking logger")
+}
+
+fn log_to_java(env: &mut JNIEnv, tag: &str, message: &str) -> i32 {
+    let logger_lock = LOGGER.lock().unwrap();
+    if let Some(logger_obj) = &*logger_lock {
+        if let Ok(j_tag) = env.new_string(tag) {
+            if let Ok(j_msg) = env.new_string(message) {
+                let result = env.call_method(
+                    logger_obj,
+                    "log",
+                    "(Ljava/lang/String;Ljava/lang/String;)V",
+                    &[JValue::Object(&j_tag), JValue::Object(&j_msg)],
+                );
+
+                // 检查是否有异常
+                if result.is_err() {
+                    0 // STH went WRONG
+                } else {
+                    1 // OKAY
+                }
+            } else {
+                -2 // NO MSG
+            }
+        } else {
+            -2 // NO TAG
+        }
+    } else {
+        -1 // NO LOGGR
+    }
+}
 
 #[unsafe(no_mangle)]
 pub extern "C" fn Java_me_earzuchan_dynactrl_utilities_LightweightLoudnessAnalyzer_nativeAnalyzeFile(
@@ -18,7 +82,7 @@ pub extern "C" fn Java_me_earzuchan_dynactrl_utilities_LightweightLoudnessAnalyz
     match crate::analysis::analyze_audio_file(&file_path_str) {
         Ok(info) => Box::into_raw(Box::new(info)) as jlong,
         Err(e) => {
-            eprintln!("RUST ERR: {}", e); // 写不出错误
+            log_to_java(&mut env, "RUST_ERR", &format!("{}", e));
             0
         } // Return null pointer on error
     }

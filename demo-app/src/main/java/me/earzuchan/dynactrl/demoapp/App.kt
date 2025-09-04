@@ -35,8 +35,8 @@ import kotlinx.coroutines.withContext
 import me.earzuchan.dynactrl.exoplayer.DynamicsProcessor
 import me.earzuchan.dynactrl.models.AudioLoudnessInfo
 import me.earzuchan.dynactrl.utilities.LightweightLoudnessAnalyzer
+import me.earzuchan.dynactrl.initDynaCtrl
 import java.io.File
-import kotlin.math.*
 
 @Composable
 fun AppTheme(
@@ -84,9 +84,11 @@ class MainActivity : ComponentActivity() {
         super.onCreate(savedInstanceState)
         enableEdgeToEdge()
 
+        // 初始化native logger
+        initDynaCtrl()
 
         // 初始化播放器
-        initializePlayers()
+        initPlayers()
 
         setContent {
             AppTheme {
@@ -161,7 +163,7 @@ class MainActivity : ComponentActivity() {
         }
     }
 
-    private fun initializePlayers() {
+    private fun initPlayers() {
         // 未处理的播放器
         rawExoPlayer = ExoPlayer.Builder(this).build()
 
@@ -219,7 +221,7 @@ class MainActivity : ComponentActivity() {
                     e.printStackTrace()
                 }
             }
-        }.start()
+        }
     }
 
     private fun toggleRawPlayback() = if (isPlayingRaw) {
