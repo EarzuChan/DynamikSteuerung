@@ -121,8 +121,8 @@ class MainActivity : ComponentActivity() {
                                         loudnessInfo != null -> {
                                             val info = loudnessInfo!!
                                             Text("响度: ${"%.1f".format(info.lufs)} LUFS", style = bodySmall)
-                                            Text("峰值: ${"%.1f".format(info.truePeak)} dBFS", style = bodySmall)
-                                            Text("动态范围: ${"%.1f".format(info.lra)} dB", style = bodySmall)
+                                            // Text("峰值: ${"%.1f".format(info.truePeak)} dBFS", style = bodySmall)
+                                            // Text("动态范围: ${"%.1f".format(info.lra)} dB", style = bodySmall)
                                         }
 
                                         selectedFile != null -> {

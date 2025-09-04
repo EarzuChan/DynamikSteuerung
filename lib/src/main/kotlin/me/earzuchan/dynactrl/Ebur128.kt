@@ -1,134 +1,93 @@
 package me.earzuchan.dynactrl
 
+import android.util.Log
 import kotlin.math.*
 
 /**
- * 简化的EBU R128实现，专注于正确性
+ * 超轻量级的EBU R128实现
  */
-class EbuR128Analyzer(private val channels: Int, sampleRate: Int) {
+class LightweightEbuR128(private val channels: Int, sampleRate: Int) {
     companion object {
-        private const val ABSOLUTE_THRESHOLD = -70.0 // LUFS
-        private const val RELATIVE_THRESHOLD_OFFSET = -10.0 // LU
-        private const val BLOCK_SIZE_MS = 400.0 // 毫秒
+        private const val TAG = "EbuR128"
+        private const val ABSOLUTE_THRESHOLD_LUFS = -70f
+        private const val RELATIVE_THRESHOLD_LU = -10f
+        private const val BLOCK_SIZE_SEC = 0.4f // 400ms块
     }
 
-    private val blockSize = (sampleRate * BLOCK_SIZE_MS / 1000.0).toInt()
-    private val overlap = blockSize * 3 / 4 // 75% overlap
+    private val blockSize = (sampleRate * BLOCK_SIZE_SEC).toInt()
+    private val absoluteThresholdEnergy = 10f.pow((ABSOLUTE_THRESHOLD_LUFS + 0.691f) / 10f)
 
-    // K-weighting 滤波器 (简化实现)
-    private val preFilter = KWeightingFilter(sampleRate, channels)
+    // 简化的K-weighting：只是一个简单的高通滤波器
+    private val highpassFilter = SimpleHighpass(sampleRate, channels)
+    private val blockEnergies = mutableListOf<Float>()
+    private val sampleBuffer = mutableListOf<Float>()
 
-    // 存储所有块的能量值用于门控
-    private val blockEnergies = mutableListOf<Double>()
+    fun addSamples(samples: FloatArray) {
+        Log.d(TAG, "添加采样：${samples.size}")
 
-    // 累积音频样本
-    private val audioBuffer = mutableListOf<Float>()
-
-    fun addSamples(samples: FloatArray, frames: Int) {
-        // 应用K-weighting滤波器
-        val filteredSamples = preFilter.process(samples, frames)
-
-        // 添加到缓冲区
-        for (i in 0 until frames * channels) audioBuffer.add(filteredSamples[i])
+        // 应用简化的K-weighting
+        val filtered = highpassFilter.process(samples)
+        sampleBuffer.addAll(filtered.toTypedArray())
 
         // 处理完整的块
-        processBlocks()
-    }
+        while (sampleBuffer.size >= blockSize * channels) {
+            val blockEnergy = calculateBlockEnergy()
+            if (blockEnergy > absoluteThresholdEnergy) blockEnergies.add(blockEnergy)
 
-    private fun processBlocks() {
-        val totalFrames = audioBuffer.size / channels
-        var frameOffset = 0
-
-        while (frameOffset + blockSize <= totalFrames) {
-            val blockEnergy = calculateBlockEnergy(frameOffset, blockSize)
-            if (blockEnergy > absoluteThresholdEnergy()) blockEnergies.add(blockEnergy)
-            frameOffset += overlap
-        }
-
-        // 保留最后一个块的数据
-        if (frameOffset > 0) {
-            val keepFrames = totalFrames - frameOffset
-            if (keepFrames > 0) {
-                val keepSamples = mutableListOf<Float>()
-                for (i in frameOffset * channels until audioBuffer.size) keepSamples.add(audioBuffer[i])
-
-                audioBuffer.clear()
-                audioBuffer.addAll(keepSamples)
-            } else audioBuffer.clear()
+            // 移除已处理的样本（保留50%重叠）
+            val removeCount = blockSize * channels / 2
+            repeat(removeCount) { sampleBuffer.removeFirstOrNull() }
         }
     }
 
-    private fun calculateBlockEnergy(frameOffset: Int, numFrames: Int): Double {
-        var energy = 0.0
+    private fun calculateBlockEnergy(): Float {
+        var energy = 0f
+        val framesToProcess = minOf(blockSize, sampleBuffer.size / channels)
 
-        for (frame in 0 until numFrames) {
-            for (ch in 0 until channels) {
-                val sampleIndex = (frameOffset + frame) * channels + ch
-                if (sampleIndex < audioBuffer.size) {
-                    val sample = audioBuffer[sampleIndex].toDouble()
-                    energy += sample * sample
-                }
-            }
+        for (frame in 0 until framesToProcess) for (ch in 0 until channels) {
+            val sample = sampleBuffer[frame * channels + ch]
+            energy += sample * sample
         }
 
-        return energy / numFrames
+        return energy / framesToProcess
     }
-
-    private fun absoluteThresholdEnergy(): Double = 10.0.pow((ABSOLUTE_THRESHOLD + 0.691) / 10.0)
 
     fun getIntegratedLoudness(): Float {
-        if (blockEnergies.isEmpty()) return Float.NEGATIVE_INFINITY
+        if (blockEnergies.size < 2) return Float.NEGATIVE_INFINITY
 
-        // 第一轮门控：绝对阈值已在添加时应用
-
-        // 第二轮门控：相对阈值
-        val meanEnergy = blockEnergies.average()
-        val relativeThreshold = meanEnergy * 10.0.pow(RELATIVE_THRESHOLD_OFFSET / 10.0)
+        // 相对门控
+        val meanEnergy = blockEnergies.average().toFloat()
+        val relativeThreshold = meanEnergy * 10f.pow(RELATIVE_THRESHOLD_LU / 10f)
 
         val gatedEnergies = blockEnergies.filter { it >= relativeThreshold }
         if (gatedEnergies.isEmpty()) return Float.NEGATIVE_INFINITY
 
-        val gatedMeanEnergy = gatedEnergies.average()
-        val lufs = 10.0 * log10(gatedMeanEnergy) - 0.691
-
-        return lufs.toFloat()
+        val gatedMeanEnergy = gatedEnergies.average().toFloat()
+        return 10f * log10(gatedMeanEnergy) // 什么沟八魔数 -> - 0.691f
     }
 }
 
 /**
- * 简化的K-weighting滤波器
+ * 超简单的高通滤波器（K-weighting近似）
  */
-class KWeightingFilter(private val sampleRate: Int, private val channels: Int) {
-    // 预滤波器系数 (简化的高通+高频提升滤波器)
-    private val b = doubleArrayOf(1.0, -2.0, 1.0) // 高通
-    private val a = doubleArrayOf(1.0, -1.99004745483398, 0.99007225036621)
+class SimpleHighpass(sampleRate: Int, private val channels: Int) {
+    private val alpha = exp(-2f * PI * 38f / sampleRate).toFloat() // 38Hz 高通
+    private val prevOutput = FloatArray(channels)
+    private val prevInput = FloatArray(channels)
 
-    // 每个声道的滤波器状态
-    private val filterState = Array(channels) { DoubleArray(3) }
-
-    fun process(input: FloatArray, frames: Int): FloatArray {
-        val output = FloatArray(frames * channels)
+    fun process(input: FloatArray): FloatArray {
+        val output = FloatArray(input.size)
+        val frames = input.size / channels
 
         for (frame in 0 until frames) {
             for (ch in 0 until channels) {
-                val inputIndex = frame * channels + ch
-                val sample = input[inputIndex].toDouble()
+                val idx = frame * channels + ch
+                val currentInput = input[idx]
 
-                // 应用IIR滤波器
-                val state = filterState[ch]
+                output[idx] = alpha * (prevOutput[ch] + currentInput - prevInput[ch])
 
-                // 输入延迟线
-                state[0] = sample
-
-                // 计算输出
-                val filteredSample = b[0] * state[0] + b[1] * state[1] + b[2] * state[2] -
-                        a[1] * state[1] - a[2] * state[2]
-
-                // 更新状态
-                state[2] = state[1]
-                state[1] = filteredSample
-
-                output[inputIndex] = filteredSample.toFloat()
+                prevOutput[ch] = output[idx]
+                prevInput[ch] = currentInput
             }
         }
 
