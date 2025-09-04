@@ -124,9 +124,7 @@ class LightweightLoudnessAnalyzer {
 
                     outputBufferIndex == MediaCodec.INFO_TRY_AGAIN_LATER -> {} // 继续等待
 
-                    else -> {
-                        Log.w(TAG, "Unexpected output buffer index: $outputBufferIndex")
-                    }
+                    else -> Log.w(TAG, "Unexpected output buffer index: $outputBufferIndex")
                 }
             }
 

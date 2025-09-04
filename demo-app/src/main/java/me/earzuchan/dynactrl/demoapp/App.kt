@@ -206,7 +206,7 @@ class MainActivity : ComponentActivity() {
                 withContext(Dispatchers.Main) {
                     loudnessInfo = analysis
                     isAnalyzing = false
-                    dynamicsProcessor.setTrackLoudness(analysis)
+                    dynamicsProcessor.setCurrentTrackLoudness(analysis)
                 }
             } catch (e: Exception) {
                 withContext(Dispatchers.Main) {
