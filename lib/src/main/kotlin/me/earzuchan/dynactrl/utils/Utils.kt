@@ -65,13 +65,10 @@ object BufferPool {
     }
 }
 
-// TODO：这有提升性能的地方吗
 /**
  * 带抗混叠的降采样器
  */
-class AntiAliasingDownsampler(
-    private val ratio: Int, private val channels: Int, sampleRate: Int
-) {
+class AntiAliasingDownsampler(private val ratio: Int, private val channels: Int, sampleRate: Int) {
     private val lowpassFilter = LowpassFilter(
         sampleRate = sampleRate,
         channels = channels, // 留点余量
@@ -84,14 +81,16 @@ class AntiAliasingDownsampler(
         // 先低通滤波防混叠
         val filtered = lowpassFilter.process(input)
 
-        // 然后降采样
+        // 降采样
         val frames = filtered.size / channels
         val outputFrames = frames / ratio
         val output = FloatArray(outputFrames * channels)
 
+        // 优化：减少乘法运算
+        var outputIndex = 0
         for (frame in 0 until outputFrames) {
-            val sourceFrame = frame * ratio
-            for (ch in 0 until channels) output[frame * channels + ch] = filtered[sourceFrame * channels + ch]
+            val sourceIndex = frame * ratio * channels
+            for (ch in 0 until channels) output[outputIndex++] = filtered[sourceIndex + ch]
         }
 
         return output

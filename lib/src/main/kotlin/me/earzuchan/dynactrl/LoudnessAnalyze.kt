@@ -10,6 +10,7 @@ import me.earzuchan.dynactrl.utils.AntiAliasingDownsampler
 import me.earzuchan.dynactrl.utils.BufferPool
 import java.io.File
 import java.nio.ByteBuffer
+import kotlin.random.Random
 
 /**
  * 轻量级响度分析器
@@ -30,13 +31,24 @@ class LightweightLoudnessAnalyzer {
 
         // 性能优化参数
         private const val TIMEOUT_US = 10_000L // 10ms 超时
-        private const val DOWNSAMPLE_RATIO = 8 // 降采样比例 TODO：超轻模式下是否需要更狠的降采样？
         private const val BUFFER_SIZE = 4096 // 缓冲区大小
-        private const val MAX_ANALYSIS_DURATION_US = 180_000_000L // 最多分析180秒 TODO：要不要改成按音频长度掐头（按比例跳过一定的开头）去尾计算一个分析时长？超轻模式下是否需要更短的分析？
+        private const val DOWNSAMPLE_RATIO = 8 // 降采样比例 WHY：降采样导致响度降低 TODO：有优化方案，到时看看
+        private const val ULTRA_LIGHT_DOWNSAMPLE_RATIO = 12 // 超轻模式降采样比例 WHY：16会导致-INF
+        private const val MAX_ANALYSIS_DURATION_US = 180_000_000L // 最多分析180秒
+        private const val ULTRA_LIGHT_MAX_ANALYSIS_DURATION_US = 120_000_000L // 超轻模式最多分析120秒
+        private const val SKIP_HEAD_RATIO = 0.05f // 跳过前5%
+        private const val ULTRA_LIGHT_SKIP_HEAD_RATIO = 0.15f // 超轻模式跳过前15%
+        private const val SKIP_TAIL_RATIO = 0.05f // 跳过后5%
+        private const val ULTRA_LIGHT_SKIP_TAIL_RATIO = 0.15f // 超轻模式跳过后15%
+        private const val ULTRA_LIGHT_FRAME_SKIP_RATIO = 3 // 超轻模式每3帧处理1帧
+        private const val ULTRA_LIGHT_SAMPLE_KEEP_RATIO = 0.6f // 超轻模式保留60%的样本
+        // private const val ULTRA_LIGHT_UNIFORM_SKIP = 3 // 或者用均匀跳跃：每3个样本取2个
     }
 
-    // TODO：整体再看看哪里能提升性能，和加入超轻模式进一步“偷鸡”
-    fun analyzeFile(audioFile: File, ultraLightMode: Boolean = true /*TODO：超轻模式*/): AudioLoudnessInfo {
+    // 在类中添加一个随机数生成器（避免每次创建）
+    // private val random = Random(System.currentTimeMillis())
+
+    fun analyzeFile(audioFile: File, ultraLightMode: Boolean = true): AudioLoudnessInfo {
         if (!audioFile.exists() || !audioFile.canRead()) {
             Log.e(TAG, "File not accessible: ${audioFile.absolutePath}")
             return AudioLoudnessInfo(-70f)
@@ -61,11 +73,28 @@ class LightweightLoudnessAnalyzer {
 
             // 获取音频参数
             val sampleRate = format.getInteger(MediaFormat.KEY_SAMPLE_RATE)
-            val channelCount = format.getInteger(MediaFormat.KEY_CHANNEL_COUNT)
-            val mime = format.getString(MediaFormat.KEY_MIME) ?: "" // TODO：如果为空字符串怎么办，可能需处理或提早返回？
+            val originalChannelCount = format.getInteger(MediaFormat.KEY_CHANNEL_COUNT)
+            val mime = format.getString(MediaFormat.KEY_MIME)
+
+            // 验证MIME类型
+            if (mime.isNullOrEmpty()) {
+                Log.e(TAG, "Missing MIME type: $mime")
+                return AudioLoudnessInfo(-70f)
+            }
+
             val pcmFormat = detectPcmFormat(format)
 
-            Log.d(TAG, "Audio format: $mime, ${sampleRate}Hz, ${channelCount}ch, ${pcmFormat}")
+            // 超轻模式：强制单声道处理
+            val newChannelCount = if (ultraLightMode) 1 else originalChannelCount
+            // TODO：byd 越降响度计算出来越低了，可能要乘个系数？
+            val downsampleRatio = if (ultraLightMode) ULTRA_LIGHT_DOWNSAMPLE_RATIO else DOWNSAMPLE_RATIO
+            val maxAnalysisDuration =
+                if (ultraLightMode) ULTRA_LIGHT_MAX_ANALYSIS_DURATION_US else MAX_ANALYSIS_DURATION_US
+
+            Log.d(
+                TAG,
+                "Audio format: $mime, ${sampleRate}Hz, ${originalChannelCount}ch->${newChannelCount}ch, ${pcmFormat}, ultra: $ultraLightMode"
+            )
 
             // 3. 初始化解码器
             codec = MediaCodec.createDecoderByType(mime).apply {
@@ -73,24 +102,43 @@ class LightweightLoudnessAnalyzer {
                 start()
             }
 
-            // 4. 初始化降采样器和响度计算器
-            // TODO：超轻模式下应该降为单声道处理（或者只取一声道）
-            val downsampledSampleRate = sampleRate / DOWNSAMPLE_RATIO
-            val downsampler = AntiAliasingDownsampler(DOWNSAMPLE_RATIO, channelCount, sampleRate)
-            val loudnessCalculator = LightweightEbuR128(channelCount, downsampledSampleRate)
+            // 4. 超轻模式：计算跳过的时间范围
+            val durationUs = format.getLong(MediaFormat.KEY_DURATION)
+            val (skipStartUs, skipEndUs) = if (ultraLightMode && durationUs > 0) {
+                val skipStart = (durationUs * ULTRA_LIGHT_SKIP_HEAD_RATIO).toLong()
+                val skipEnd = durationUs - (durationUs * ULTRA_LIGHT_SKIP_TAIL_RATIO).toLong()
+                Pair(skipStart, skipEnd)
+            } else if (durationUs > 0) {
+                val skipStart = (durationUs * SKIP_HEAD_RATIO).toLong()
+                val skipEnd = durationUs - (durationUs * SKIP_TAIL_RATIO).toLong()
+                Pair(skipStart, skipEnd)
+            } else Pair(0L, Long.MAX_VALUE) // 如果无法获取时长，处理全部
 
-            // 5. 解码并处理音频
+            Log.d(
+                TAG,
+                "Processing range: ${skipStartUs / 1000}ms - ${skipEndUs / 1000}ms (duration: ${durationUs / 1000}ms)"
+            )
+
+            // 5. 初始化降采样器和响度计算器
+            val downsampledSampleRate = sampleRate / downsampleRatio
+            val downsampler = AntiAliasingDownsampler(downsampleRatio, newChannelCount, sampleRate)
+            val loudnessCalculator = LightweightEbuR128(newChannelCount, downsampledSampleRate)
+
+            // 6. 解码并处理音频
             val bufferInfo = MediaCodec.BufferInfo()
-            var isEOS = false
+            var isEnded = false
             var totalSamplesProcessed = 0L
-            val maxSamples = (MAX_ANALYSIS_DURATION_US * sampleRate / 1_000_000L).toInt()
+            var frameSkipCounter = 0 // 用于跳帧处理
+            val maxSamples = (maxAnalysisDuration * sampleRate / 1_000_000L).toInt()
 
             // 使用对象池减少内存分配
             val sampleBuffer = BufferPool.borrowFloatArray(BUFFER_SIZE)
-            try {
-                while (!isEOS && totalSamplesProcessed < maxSamples) {
-                    // TODO：看看超轻模式下怎么合理“偷工减料”提升性能
+            val monoBuffer = if (ultraLightMode && originalChannelCount > 1) {
+                BufferPool.borrowFloatArray(BUFFER_SIZE / originalChannelCount)
+            } else null
 
+            try {
+                while (!isEnded && totalSamplesProcessed < maxSamples) {
                     // 输入缓冲区处理
                     val inputBufferIndex = codec.dequeueInputBuffer(TIMEOUT_US)
                     if (inputBufferIndex >= 0) {
@@ -103,9 +151,20 @@ class LightweightLoudnessAnalyzer {
                                     inputBufferIndex, 0, 0, 0,
                                     MediaCodec.BUFFER_FLAG_END_OF_STREAM
                                 )
-                                isEOS = true
+                                isEnded = true
                             } else {
                                 val presentationTimeUs = extractor.sampleTime
+
+                                if (presentationTimeUs !in skipStartUs..skipEndUs) {
+                                    // 跳过这个帧，但仍要推进extractor和释放buffer
+                                    extractor.advance()
+                                    codec.queueInputBuffer(inputBufferIndex, 0, 0, presentationTimeUs, 0)
+
+                                    // 如果已经超过结束时间，直接看作结束
+                                    if (presentationTimeUs > skipEndUs) isEnded = true
+                                    continue
+                                }
+
                                 codec.queueInputBuffer(
                                     inputBufferIndex, 0, sampleSize,
                                     presentationTimeUs, 0
@@ -122,29 +181,47 @@ class LightweightLoudnessAnalyzer {
                         outputBufferIndex >= 0 -> {
                             val outputBuffer = codec.getOutputBuffer(outputBufferIndex)
                             if (outputBuffer != null && bufferInfo.size > 0) {
+                                // 超轻模式：跳帧处理
+                                if (ultraLightMode) {
+                                    frameSkipCounter++
+                                    if (frameSkipCounter % ULTRA_LIGHT_FRAME_SKIP_RATIO != 0) {
+                                        codec.releaseOutputBuffer(outputBufferIndex, false)
+                                        continue
+                                    }
+                                }
+
                                 // 处理PCM数据
-                                val samples = processPcmData(
-                                    outputBuffer,
-                                    bufferInfo.size,
-                                    pcmFormat,
-                                    sampleBuffer
-                                )
+                                val samples = processPcmData(outputBuffer, bufferInfo.size, pcmFormat, sampleBuffer)
+
+                                // 检查样本数据是否有效
+                                if (samples.isEmpty()) {
+                                    codec.releaseOutputBuffer(outputBufferIndex, false)
+                                    continue
+                                }
+
+                                // 超轻模式：转换为单声道
+                                val finalSamples = if (ultraLightMode && originalChannelCount > 1 && monoBuffer != null)
+                                    convertToMono(samples, originalChannelCount, monoBuffer)
+                                else samples
 
                                 // 降采样
-                                val downsampledSamples = downsampler.process(samples)
+                                val downsampledSamples = downsampler.process(finalSamples)
 
-                                // TODO：应该加本次不采样（看和上次采样的音轨时间间隔）、样本减量（平均地抽掉一半或一部分）的逻辑
+                                // 超轻模式：进一步减少样本量
+                                val finalProcessedSamples = if (ultraLightMode && downsampledSamples.isNotEmpty())
+                                    reduceUltraLightSamples(downsampledSamples, newChannelCount)
+                                else downsampledSamples
 
                                 // 添加到响度计算器
-                                if (downsampledSamples.isNotEmpty()) {
-                                    loudnessCalculator.addSamples(downsampledSamples)
-                                    totalSamplesProcessed += samples.size / channelCount
+                                if (finalProcessedSamples.isNotEmpty()) {
+                                    loudnessCalculator.addSamples(finalProcessedSamples)
+                                    totalSamplesProcessed += finalSamples.size / newChannelCount
                                 }
                             }
 
                             codec.releaseOutputBuffer(outputBufferIndex, false)
 
-                            if (bufferInfo.flags and MediaCodec.BUFFER_FLAG_END_OF_STREAM != 0) isEOS = true
+                            if (bufferInfo.flags and MediaCodec.BUFFER_FLAG_END_OF_STREAM != 0) isEnded = true
                         }
 
                         outputBufferIndex == MediaCodec.INFO_OUTPUT_FORMAT_CHANGED ->
@@ -157,18 +234,26 @@ class LightweightLoudnessAnalyzer {
                 }
             } finally {
                 BufferPool.returnFloatArray(sampleBuffer)
+                monoBuffer?.let { BufferPool.returnFloatArray(it) }
             }
 
-            // 6. 计算最终响度
-            val loudness = if (totalSamplesProcessed > 0) loudnessCalculator.getIntegratedLoudness() else -70f
+            // 7. 计算最终响度
+            val loudness = if (totalSamplesProcessed > 0) loudnessCalculator.getIntegratedLoudness()
+            else {
+                Log.w(TAG, "No samples processed!")
+                -70f
+            }
 
-            Log.d(TAG, "Analysis complete: $loudness LUFS, processed $totalSamplesProcessed samples")
+            Log.d(
+                TAG,
+                "Analysis complete: $loudness LUFS, processed $totalSamplesProcessed samples (ultra: $ultraLightMode)"
+            )
             return AudioLoudnessInfo(loudness)
         } catch (e: Exception) {
             Log.e(TAG, "Error analyzing file", e)
             return AudioLoudnessInfo(-70f)
         } finally {
-            // 7. 清理资源
+            // 8. 清理资源
             try {
                 codec?.stop()
                 codec?.release()
@@ -177,6 +262,98 @@ class LightweightLoudnessAnalyzer {
                 Log.e(TAG, "Error releasing resources", e)
             }
         }
+    }
+
+    /**
+     * 超轻模式样本减少策略
+     */
+    private fun reduceUltraLightSamples(samples: FloatArray, channelCount: Int): FloatArray = when {
+        samples.size < 100 -> samples // 样本太少就不减少了
+        else -> {
+            // 方法1：随机抽样（推荐，统计特性最好）
+            // randomSubsample(samples, channelCount, ULTRA_LIGHT_SAMPLE_KEEP_RATIO)
+
+            // 方法2：均匀抽样（性能最好）
+            // uniformSubsample(samples, channelCount, ULTRA_LIGHT_UNIFORM_SKIP)
+
+            // 方法3：伪随机抽样（性能和统计特性的平衡）
+            pseudoRandomSubsample(samples, channelCount)
+        }
+    }
+
+    /**
+     * 方法1：随机抽样 - 统计特性最好，但有一定计算开销
+     */
+    /*private fun randomSubsample(samples: FloatArray, channelCount: Int, keepRatio: Float): FloatArray {
+        val frames = samples.size / channelCount
+        val keepFrames = (frames * keepRatio).toInt()
+
+        if (keepFrames >= frames) return samples
+
+        val outputSize = keepFrames * channelCount
+        val output = FloatArray(outputSize)
+
+        // 生成随机帧索引
+        val selectedFrames = (0 until frames).shuffled(random).take(keepFrames).sorted()
+
+        for ((outputFrame, sourceFrame) in selectedFrames.withIndex()) for (ch in 0 until channelCount)
+            output[outputFrame * channelCount + ch] = samples[sourceFrame * channelCount + ch]
+
+        return output
+    }*/
+
+    /**
+     * 方法2：均匀抽样 - 性能最好，规律性强
+     */
+    /*private fun uniformSubsample(samples: FloatArray, channelCount: Int, skipRatio: Int): FloatArray {
+        val frames = samples.size / channelCount
+        val keepFrames = frames / skipRatio * (skipRatio - 1) // 每skipRatio帧保留(skipRatio-1)帧
+
+        if (keepFrames >= frames) return samples
+
+        val outputSize = keepFrames * channelCount
+        val output = FloatArray(outputSize)
+        var outputIndex = 0
+
+        // 跳过每skipRatio帧中的第1帧
+        for (frame in 0 until frames) if (frame % skipRatio != 0)
+            for (ch in 0 until channelCount) if (outputIndex < outputSize) {
+                output[outputIndex] = samples[frame * channelCount + ch]
+                outputIndex++
+            }
+
+        return output.copyOfRange(0, minOf(outputIndex, outputSize))
+    }*/
+
+    /**
+     * 方法3：伪随机抽样 - 性能和随机性的平衡
+     * 使用简单的线性同余生成器避免Random类的开销
+     */
+    private var pseudoRandomSeed = System.currentTimeMillis() and 0xFFFFFF
+
+    private fun pseudoRandomSubsample(samples: FloatArray, channelCount: Int): FloatArray {
+        val frames = samples.size / channelCount
+        val keepFrames = (frames * ULTRA_LIGHT_SAMPLE_KEEP_RATIO).toInt()
+
+        if (keepFrames >= frames) return samples
+
+        val outputSize = keepFrames * channelCount
+        val output = FloatArray(outputSize)
+        var outputIndex = 0
+
+        for (frame in 0 until frames) {
+            // 简单的伪随机判断
+            pseudoRandomSeed = (pseudoRandomSeed * 1103515245 + 12345) and 0x7FFFFFFF
+            val randomValue = (pseudoRandomSeed % 1000) / 1000f
+
+            if (randomValue < ULTRA_LIGHT_SAMPLE_KEEP_RATIO && outputIndex < outputSize - channelCount)
+                for (ch in 0 until channelCount) {
+                    output[outputIndex] = samples[frame * channelCount + ch]
+                    outputIndex++
+                }
+        }
+
+        return output.copyOfRange(0, outputIndex)
     }
 
     private fun findAudioTrack(extractor: MediaExtractor): Int {
@@ -200,44 +377,58 @@ class LightweightLoudnessAnalyzer {
         }
     }
 
-    // TODO：这里能提升性能吗？
+    // 优化的PCM数据处理
     private fun processPcmData(
-        buffer: ByteBuffer, size: Int,
-        format: PcmFormat, outputBuffer: FloatArray
+        buffer: ByteBuffer, size: Int, format: PcmFormat, outputBuffer: FloatArray
     ): FloatArray {
-        val sampleCount = when (format) {
-            PcmFormat.PCM_16BIT -> size / 2
-            PcmFormat.PCM_24BIT -> size / 3
-            PcmFormat.PCM_32BIT -> size / 4
-            PcmFormat.PCM_FLOAT -> size / 4
+        val bytesPerSample = when (format) {
+            PcmFormat.PCM_16BIT -> 2
+            PcmFormat.PCM_24BIT -> 3
+            PcmFormat.PCM_32BIT, PcmFormat.PCM_FLOAT -> 4
         }
+
+        val sampleCount = size / bytesPerSample
+        if (sampleCount <= 0) return floatArrayOf()
 
         val actualOutputSize = minOf(sampleCount, outputBuffer.size)
-        val resultBuffer = if (actualOutputSize <= outputBuffer.size) outputBuffer else FloatArray(actualOutputSize)
 
+        // 直接在输出缓冲区中工作，避免额外分配
         when (format) {
-            PcmFormat.PCM_16BIT -> for (i in 0 until actualOutputSize) {
-                val sample = buffer.getShort(i * 2)
-                resultBuffer[i] = sample / 32768f
-            }
+            PcmFormat.PCM_16BIT -> for (i in 0 until actualOutputSize)
+                outputBuffer[i] = buffer.getShort(i * 2) / 32768f
 
             PcmFormat.PCM_24BIT -> for (i in 0 until actualOutputSize) {
-                val byte1 = buffer.get(i * 3).toInt() and 0xFF
-                val byte2 = buffer.get(i * 3 + 1).toInt() and 0xFF
-                val byte3 = buffer.get(i * 3 + 2).toInt()
+                val offset = i * 3
+                val byte1 = buffer.get(offset).toInt() and 0xFF
+                val byte2 = buffer.get(offset + 1).toInt() and 0xFF
+                val byte3 = buffer.get(offset + 2).toInt()
                 val sample = (byte3 shl 16) or (byte2 shl 8) or byte1
-                resultBuffer[i] = sample / 8388608f
+                outputBuffer[i] = sample / 8388608f
             }
 
-            PcmFormat.PCM_32BIT -> for (i in 0 until actualOutputSize) {
-                val sample = buffer.getInt(i * 4)
-                resultBuffer[i] = sample / 2.1474836E9f
-            }
+            PcmFormat.PCM_32BIT -> for (i in 0 until actualOutputSize)
+                outputBuffer[i] = buffer.getInt(i * 4) / 2.1474836E9f
 
-            PcmFormat.PCM_FLOAT -> for (i in 0 until actualOutputSize) resultBuffer[i] = buffer.getFloat(i * 4)
+            PcmFormat.PCM_FLOAT -> for (i in 0 until actualOutputSize)
+                outputBuffer[i] = buffer.getFloat(i * 4)
         }
 
-        return if (resultBuffer === outputBuffer) resultBuffer.copyOfRange(0, actualOutputSize)
-        else resultBuffer.copyOf(actualOutputSize)
+        return outputBuffer.copyOfRange(0, actualOutputSize)
+    }
+
+    // 将多声道转换为单声道（取平均值）
+    private fun convertToMono(input: FloatArray, channelCount: Int, outputBuffer: FloatArray): FloatArray {
+        val frames = input.size / channelCount
+        if (frames <= 0) return floatArrayOf()
+
+        val actualOutputSize = minOf(frames, outputBuffer.size)
+
+        for (frame in 0 until actualOutputSize) {
+            var sum = 0f
+            for (ch in 0 until channelCount) sum += input[frame * channelCount + ch]
+            outputBuffer[frame] = sum / channelCount
+        }
+
+        return outputBuffer.copyOfRange(0, actualOutputSize)
     }
 }
