@@ -16,9 +16,8 @@ android {
 
     buildTypes {
         release {
-            isMinifyEnabled = true
-            proguardFiles(getDefaultProguardFile("proguard-android-optimize.txt"), "proguard-rules.pro")
-            signingConfig = signingConfigs.getByName("debug")
+            // isMinifyEnabled = true
+            // proguardFiles(getDefaultProguardFile("proguard-android-optimize.txt"), "proguard-rules.pro")
         }
     }
 
@@ -36,8 +35,8 @@ dependencies {
 
     // AndroidX 核心库
     implementation("androidx.core:core-ktx:1.17.0")
-    implementation("androidx.appcompat:appcompat:1.7.1")
 
     // 只是依赖下
-    api("androidx.media3:media3-common-ktx:1.8.0")
+    val m3ver = "1.8.0"
+    api("androidx.media3:media3-common-ktx:${m3ver}")
 }

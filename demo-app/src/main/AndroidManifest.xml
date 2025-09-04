@@ -3,7 +3,7 @@
     <application
             android:label="DynaCtrl"
             android:supportsRtl="true"
-            android:theme="@style/Theme.AppCompat.DayNight">
+            android:theme="@android:style/Theme.NoTitleBar">
         <activity
                 android:name=".MainActivity"
                 android:exported="true">

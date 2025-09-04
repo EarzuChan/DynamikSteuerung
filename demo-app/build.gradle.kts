@@ -12,7 +12,7 @@ android {
 
     defaultConfig {
         applicationId = appId
-        minSdk = 24
+        minSdk = 21
         targetSdk = 36
         versionCode = 1
         versionName = "1.0"
@@ -20,9 +20,8 @@ android {
 
     buildTypes {
         release {
-            isMinifyEnabled = true
-            proguardFiles(getDefaultProguardFile("proguard-android-optimize.txt"), "proguard-rules.pro")
-            signingConfig = signingConfigs.getByName("debug")
+            // isMinifyEnabled = true
+            // proguardFiles(getDefaultProguardFile("proguard-android-optimize.txt"), "proguard-rules.pro")
         }
     }
 
@@ -37,7 +36,6 @@ android {
 }
 
 dependencies {
-
     implementation("androidx.core:core-ktx:1.17.0")
     implementation("androidx.lifecycle:lifecycle-runtime-ktx:2.9.3")
     implementation("androidx.activity:activity-compose:1.10.1")
@@ -51,9 +49,9 @@ dependencies {
     debugImplementation("androidx.compose.ui:ui-test-manifest")
 
     val m3ver = "1.8.0"
+    implementation("androidx.media3:media3-common-ktx:${m3ver}")
     implementation("androidx.media3:media3-exoplayer:$m3ver")
     implementation("androidx.media3:media3-ui:$m3ver")
-    implementation("androidx.media3:media3-common-ktx:$m3ver")
 
     implementation(project(":lib"))
 }
