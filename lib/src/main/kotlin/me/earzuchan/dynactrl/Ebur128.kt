@@ -63,7 +63,7 @@ class LightweightEbuR128(private val channels: Int, sampleRate: Int) {
         if (gatedEnergies.isEmpty()) return Float.NEGATIVE_INFINITY
 
         val gatedMeanEnergy = gatedEnergies.average().toFloat()
-        return 10f * log10(gatedMeanEnergy) // 什么沟八魔数 -> - 0.691f
+        return 10f * log10(gatedMeanEnergy) // - 0.691f <- 这是什么魔数？求解答
     }
 }
 
