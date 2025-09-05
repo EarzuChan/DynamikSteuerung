@@ -82,7 +82,7 @@ class DynamicsProcessor : BaseAudioProcessor() {
 
             4 -> processFloat32(inputBuffer, outputBuffer)
 
-            // 对于其他格式，直接复制（不处理）
+            // 对于其他格式，直接复制（不处理） TODO：或有问题
             else -> outputBuffer.put(inputBuffer)
         }
 
@@ -93,7 +93,7 @@ class DynamicsProcessor : BaseAudioProcessor() {
     private fun processInt16(inputBuffer: ByteBuffer, outputBuffer: ByteBuffer) {
         val samplesCount = inputBuffer.remaining() / 2
 
-        // 好像有超采样？
+        // CHECK：好像有超采样？
         repeat(samplesCount) {
             // 读取16位样本
             val sample = inputBuffer.short.toFloat() / Short.MAX_VALUE
@@ -158,6 +158,7 @@ class DynamicsProcessor : BaseAudioProcessor() {
         // 重置所有状态
         currentLoudnessInfo = null
         gainScale = 1.0f
+
         limiterGainReduction = 1.0f
     }
 }
