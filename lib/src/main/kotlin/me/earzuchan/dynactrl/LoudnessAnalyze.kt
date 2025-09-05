@@ -6,11 +6,9 @@ import android.media.MediaExtractor
 import android.media.MediaFormat
 import android.util.Log
 import me.earzuchan.dynactrl.models.AudioLoudnessInfo
-import me.earzuchan.dynactrl.utils.AntiAliasingDownsampler
 import me.earzuchan.dynactrl.utils.BufferPool
 import java.io.File
 import java.nio.ByteBuffer
-import kotlin.random.Random
 
 /**
  * 轻量级响度分析器
@@ -32,6 +30,7 @@ class LightweightLoudnessAnalyzer {
         // 性能优化参数
         private const val TIMEOUT_US = 10_000L // 10ms 超时
         private const val BUFFER_SIZE = 4096 // 缓冲区大小
+        // zTIPS：暂时禁用降采样
         private const val DOWNSAMPLE_RATIO = 8 // 降采样比例 WHY：降采样导致响度降低 TODO：有优化方案，到时看看
         private const val ULTRA_LIGHT_DOWNSAMPLE_RATIO = 12 // 超轻模式降采样比例 WHY：16会导致-INF
         private const val MAX_ANALYSIS_DURATION_US = 180_000_000L // 最多分析180秒
@@ -87,7 +86,7 @@ class LightweightLoudnessAnalyzer {
             // 超轻模式：强制单声道处理
             val newChannelCount = if (ultraLightMode) 1 else originalChannelCount
             // TODO：byd 越降响度计算出来越低了，可能要乘个系数？
-            val downsampleRatio = if (ultraLightMode) ULTRA_LIGHT_DOWNSAMPLE_RATIO else DOWNSAMPLE_RATIO
+            // val downsampleRatio = if (ultraLightMode) ULTRA_LIGHT_DOWNSAMPLE_RATIO else DOWNSAMPLE_RATIO TIPS：暂时禁用降采样
             val maxAnalysisDuration =
                 if (ultraLightMode) ULTRA_LIGHT_MAX_ANALYSIS_DURATION_US else MAX_ANALYSIS_DURATION_US
 
@@ -119,10 +118,10 @@ class LightweightLoudnessAnalyzer {
                 "Processing range: ${skipStartUs / 1000}ms - ${skipEndUs / 1000}ms (duration: ${durationUs / 1000}ms)"
             )
 
-            // 5. 初始化降采样器和响度计算器
-            val downsampledSampleRate = sampleRate / downsampleRatio
-            val downsampler = AntiAliasingDownsampler(downsampleRatio, newChannelCount, sampleRate)
-            val loudnessCalculator = LightweightEbuR128(newChannelCount, downsampledSampleRate)
+            // 5. 初始化降采样器和响度计算器 TIPS：暂时禁用降采样
+            /*val downsampledSampleRate = sampleRate / downsampleRatio
+            val downsampler = AntiAliasingDownsampler(downsampleRatio, newChannelCount, sampleRate)*/
+            val loudnessCalculator = LightweightEbuR128(newChannelCount, sampleRate /*downsampledSampleRate*/)
 
             // 6. 解码并处理音频
             val bufferInfo = MediaCodec.BufferInfo()
@@ -204,13 +203,13 @@ class LightweightLoudnessAnalyzer {
                                     convertToMono(samples, originalChannelCount, monoBuffer)
                                 else samples
 
-                                // 降采样
-                                val downsampledSamples = downsampler.process(finalSamples)
+                                // 降采样 TIPS：暂时禁用降采样
+                                // val downsampledSamples = downsampler.process(finalSamples)
 
                                 // 超轻模式：进一步减少样本量
-                                val finalProcessedSamples = if (ultraLightMode && downsampledSamples.isNotEmpty())
-                                    reduceUltraLightSamples(downsampledSamples, newChannelCount)
-                                else downsampledSamples
+                                val finalProcessedSamples = if (ultraLightMode && /*downsampledSamples*/finalSamples.isNotEmpty())
+                                    reduceSamples(/*downsampledSamples*/finalSamples, newChannelCount)
+                                else /*downsampledSamples*/finalSamples
 
                                 // 添加到响度计算器
                                 if (finalProcessedSamples.isNotEmpty()) {
@@ -238,11 +237,15 @@ class LightweightLoudnessAnalyzer {
             }
 
             // 7. 计算最终响度
-            val loudness = if (totalSamplesProcessed > 0) loudnessCalculator.getIntegratedLoudness()
+            var loudness = if (totalSamplesProcessed > 0) loudnessCalculator.getIntegratedLoudness()
             else {
                 Log.w(TAG, "No samples processed!")
                 -70f
             }
+
+            // 根据降采样倍率进行补偿 TIPS：暂时禁用降采样
+            // TODO：要不要经典解方程？还有就是EBUR里面那个魔数他妈的？另外要不要移到EBUR里
+            // loudness += if (ultraLightMode) 5.4f else 2.7f
 
             Log.d(
                 TAG,
@@ -267,7 +270,7 @@ class LightweightLoudnessAnalyzer {
     /**
      * 超轻模式样本减少策略
      */
-    private fun reduceUltraLightSamples(samples: FloatArray, channelCount: Int): FloatArray = when {
+    private fun reduceSamples(samples: FloatArray, channelCount: Int): FloatArray = when {
         samples.size < 100 -> samples // 样本太少就不减少了
         else -> {
             // 方法1：随机抽样（推荐，统计特性最好）

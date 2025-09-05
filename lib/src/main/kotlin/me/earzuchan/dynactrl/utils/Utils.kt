@@ -71,8 +71,8 @@ object BufferPool {
 class AntiAliasingDownsampler(private val ratio: Int, private val channels: Int, sampleRate: Int) {
     private val lowpassFilter = LowpassFilter(
         sampleRate = sampleRate,
-        channels = channels, // 留点余量
-        freq = sampleRate.toFloat() / (2 * ratio * 1.1f)
+        channels = channels,
+        freq = sampleRate.toFloat() / (2 * ratio /* * 1.1f */) // TODO：响度计算值确和这个有关，越低越大
     )
 
     fun process(input: FloatArray): FloatArray {
