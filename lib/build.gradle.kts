@@ -16,14 +16,6 @@ android {
         ndk { abiFilters += listOf("armeabi-v7a", "arm64-v8a", "x86", "x86_64") }
     }
 
-    buildTypes {
-        release {
-            isMinifyEnabled = true
-            proguardFiles(getDefaultProguardFile("proguard-android-optimize.txt"), "proguard-rules.pro")
-            signingConfig = signingConfigs.getByName("debug")
-        }
-    }
-
     sourceSets { getByName("main") { jniLibs.srcDirs("src/main/jniLibs") } }
 
     compileOptions {
@@ -40,88 +32,59 @@ dependencies {
 
     // AndroidX 核心库
     implementation("androidx.core:core-ktx:1.17.0")
-    implementation("androidx.appcompat:appcompat:1.7.1")
 
     // 只是依赖下
-    api("androidx.media3:media3-common-ktx:1.8.0")
+    val m3ver = "1.8.0"
+    api("androidx.media3:media3-common-ktx:${m3ver}")
 }
 
-// Rust target 到 Android ABI 的映射
-val rustTargetToAndroidAbi = mapOf(
-    "aarch64-linux-android" to "arm64-v8a",
-    "armv7-linux-androideabi" to "armeabi-v7a",
-    "i686-linux-android" to "x86",
-    "x86_64-linux-android" to "x86_64"
-)
+val buildAndCopyNativeLibs = tasks.register("buildAndCopyNativeLibs") {
+    group = "build"
+    description = "Build native libraries and copy them"
 
-// 创建构建 Rust 库的任务
-val buildRustLibrary = tasks.register("buildRustLibrary") {
-    group = "rust"
-    description = "Build Rust native library"
+    val nativeProject = project(":native")
 
-    dependsOn(cleanRustLibrary)
-
-    // 使用 Provider API 来延迟计算路径
-    val nativeDir = project.layout.projectDirectory.dir("../native")
-    val jniLibsDir = project.layout.buildDirectory.dir("../src/main/jniLibs").get()
-
-    // 设置 inputs 和 outputs
-    inputs.dir(nativeDir.dir("src"))
-    inputs.file(nativeDir.file("Cargo.toml"))
-
-    rustTargetToAndroidAbi.values.forEach { outputs.file(jniLibsDir.file("$it/libdynactrl.so")) }
+    // 依赖 native 项目的架构构建任务
+    dependsOn(nativeProject.tasks.named("linkReleaseSharedAndroidNativeX64"))
+    dependsOn(nativeProject.tasks.named("linkReleaseSharedAndroidNativeX86"))
+    dependsOn(nativeProject.tasks.named("linkReleaseSharedAndroidNativeArm32"))
+    dependsOn(nativeProject.tasks.named("linkReleaseSharedAndroidNativeArm64"))
 
     doLast {
-        val nativeDirFile = nativeDir.asFile
-        val jniLibsDirFile = jniLibsDir.asFile
+        val libJNILibsDir = project.layout.projectDirectory.dir("src/main/jniLibs").asFile
 
-        rustTargetToAndroidAbi.forEach { (rustTarget, androidAbi) ->
-            // 构建 Rust 库
-            exec {
-                workingDir = nativeDirFile
-                commandLine("cargo", "build", "--target", rustTarget, "--release")
+        // 先删除旧的 CHECK：暂时不
+        // libJNILibsDir.takeIf { it.exists() }?.deleteRecursively()
+
+        // 定义架构映射（从 native build path 到 JNI libs path）
+        val architectureMappings = mapOf(
+            "androidNativeX64" to "x86_64",
+            "androidNativeX86" to "x86",
+            "androidNativeArm32" to "armeabi-v7a",
+            "androidNativeArm64" to "arm64-v8a"
+        )
+
+        // 对于每个架构，复制 libdynactrl.so 到对应的 JNI libs 目录
+        architectureMappings.forEach { (buildArch, jniArch) ->
+            val sourceFile = nativeProject.file("build/bin/$buildArch/releaseShared/libdynactrl.so")
+
+            if (!sourceFile.exists()) println("${sourceFile.path}不存在，${jniArch}的构建可能失败了")
+            else {
+                val targetDir = File(libJNILibsDir,jniArch)
+
+                println("正在把${sourceFile.path}复制到$targetDir")
+
+                // 确保目标目录存在
+                targetDir.mkdirs()
+
+                copy {
+                    from(sourceFile)
+                    into(targetDir)
+                }
             }
-
-            // 创建目标目录
-            val targetDir = File(jniLibsDirFile, androidAbi)
-            targetDir.mkdirs()
-
-            // 复制生成的库文件
-            val sourceFile = File(nativeDirFile, "target/$rustTarget/release/libdynactrl.so")
-            val targetFile = File(targetDir, "libdynactrl.so")
-
-            if (sourceFile.exists()) {
-                sourceFile.copyTo(targetFile, overwrite = true)
-                println("Copied $sourceFile to $targetFile")
-            } else println("Warning: $sourceFile not found")
-        }
-    }
-}
-
-// 创建清理 Rust 构建产物的任务
-val cleanRustLibrary = tasks.register("cleanRustLibrary") {
-    group = "rust"
-    description = "Clean Rust native library build artifacts"
-
-    val nativeDir = project.layout.projectDirectory.dir("../native")
-    val jniLibsDir = project.layout.buildDirectory.dir("../src/main/jniLibs").get()
-
-    doLast {
-        val nativeDirFile = nativeDir.asFile
-        val jniLibsDirFile = jniLibsDir.asFile
-
-        exec {
-            workingDir = nativeDirFile
-            commandLine("cargo", "clean")
         }
 
-        // 也清理 jniLibs 目录
-        if (jniLibsDirFile.exists()) jniLibsDirFile.deleteRecursively()
+        // 清理Build目录 CHECK：必要吗
+        // nativeProject.file("build/bin").takeIf { it.exists() }?.deleteRecursively()
     }
 }
-
-// 让 Android 构建任务依赖 Rust 构建任务
-// tasks.named("preBuild") { dependsOn(buildRustLibrary) }
-
-// 让清理任务也清理 Rust 构建产物
-// tasks.named("clean") { dependsOn(cleanRustLibrary) }

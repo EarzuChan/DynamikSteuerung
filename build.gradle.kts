@@ -6,5 +6,6 @@ plugins {
     id("com.android.library") version agpVer apply false
     id("com.android.application") version agpVer apply false
     id("org.jetbrains.kotlin.android") version ktVer apply false
+    id("org.jetbrains.kotlin.multiplatform") version ktVer apply false
     id("org.jetbrains.kotlin.plugin.compose") version ktVer apply false
 }

@@ -1,4 +1,12 @@
-/target
-/.idea
-/.cargo
-Cargo.lock
+/build
+/release
+/debug
+!**/src/main/**/build/
+!**/src/test/**/build/
+/out
+!**/src/main/**/out/
+!**/src/test/**/out/
+/bin
+!**/src/main/**/bin/
+!**/src/test/**/bin/
+/dist

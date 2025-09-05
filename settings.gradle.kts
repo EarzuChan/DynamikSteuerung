@@ -20,6 +20,8 @@ dependencyResolutionManagement {
     }
 }
 include(":demo-app")
+
 include(":lib")
+include(":native")
 
 rootProject.name = "DynaCtrl"
