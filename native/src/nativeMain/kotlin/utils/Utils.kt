@@ -1,33 +1,23 @@
 package me.earzuchan.dynactrl.native.utils
 
-import kotlinx.cinterop.CPointer
-import kotlinx.cinterop.CPointerVar
-import kotlinx.cinterop.ExperimentalForeignApi
-import kotlinx.cinterop.alloc
-import kotlinx.cinterop.invoke
-import kotlinx.cinterop.memScoped
-import kotlinx.cinterop.pointed
-import kotlinx.cinterop.ptr
-import kotlinx.cinterop.reinterpret
-import platform.android.ANDROID_LOG_DEBUG
-import platform.android.ANDROID_LOG_ERROR
-import platform.android.ANDROID_LOG_INFO
-import platform.android.ANDROID_LOG_WARN
-import platform.android.JNIEnvVar
-import platform.android.JNI_OK
-import platform.android.JNI_VERSION_1_6
-import platform.android.JavaVMVar
-import platform.android.__android_log_print
+import kotlinx.cinterop.*
+import platform.android.*
+import kotlin.math.*
 
 object Log {
     fun d(tag: String, msg: String) = __android_log_print(ANDROID_LOG_DEBUG.toInt(), tag, msg)
     fun e(tag: String, msg: String) = __android_log_print(ANDROID_LOG_ERROR.toInt(), tag, msg)
+    fun e(tag: String, msg: String, e: Throwable) =
+        __android_log_print(ANDROID_LOG_ERROR.toInt(), tag, "msg\n${e.stackTraceToString()}")
+
     fun i(tag: String, msg: String) = __android_log_print(ANDROID_LOG_INFO.toInt(), tag, msg)
     fun w(tag: String, msg: String) = __android_log_print(ANDROID_LOG_WARN.toInt(), tag, msg)
 }
 
 @OptIn(ExperimentalForeignApi::class)
 object JniUtils {
+    private const val TAG = "JniUtils"
+
     fun CPointer<JavaVMVar>.isOk(): Boolean = memScoped {
         val envStorage = alloc<CPointerVar<JNIEnvVar>>()
         val vmValue = this@isOk.pointed.pointed!!
@@ -38,4 +28,249 @@ object JniUtils {
     }
 
     val Boolean.j: UByte get() = if (this) 1u else 0u
+
+    // 定义一个接受 JNIEnv* 和 jstring 的 native 函数
+    fun CPointer<JNIEnvVar>.getString(jStr: jstring?): String? {
+        if (jStr == null) {
+            Log.e(TAG, "咕咕嘎嘎")
+            return null
+        } else Log.d(TAG, "喵喵")
+
+        val realEnv = pointed.pointed
+
+        if (realEnv == null) {
+            Log.e(TAG, "我阐述你的美")
+            return null
+        } else Log.d(TAG, "It's CryChic：$realEnv")
+
+        // 使用 JNI 函数获取 UTF-8 字符串
+        Log.d(TAG, "熟悉的路牌，好像一直都在这里等待")
+        val getter = realEnv.GetStringChars
+        Log.d(TAG, "最爱的你却已不在")
+
+        if (getter == null) {
+            Log.e(TAG, "摇了我吧爹")
+            return null
+        } else Log.d(TAG, "Av Lujiba")
+
+        val utfChars = getter(this, jStr, null)
+        return if (utfChars != null) {
+            Log.d(TAG, "啊得到：$utfChars")
+
+            // 创建 Kotlin String
+            val kStr = runCatching { utfChars.toKString() }.onFailure {
+                Log.e(TAG, "我阐述你的：${it.stackTraceToString()}")
+            }.getOrNull()
+
+            // 释放 JNI 资源
+            realEnv.ReleaseStringChars!!(this, jStr, utfChars)
+            kStr
+        } else {
+            Log.e(TAG, "布豪")
+            null
+        }
+    }
+}
+
+/**
+ * 带抗混叠的降采样器
+ */
+class AntiAliasingDownsampler(private val ratio: Int, private val channels: Int, sampleRate: Int) {
+    private val lowpassFilter = LowpassFilter(
+        sampleRate = sampleRate,
+        channels = channels,
+        freq = sampleRate.toFloat() / (2 * ratio /* * 1.1f */) // TODO：响度计算值确和这个有关，越低越大
+    )
+
+    fun process(input: FloatArray): FloatArray {
+        if (input.isEmpty()) return floatArrayOf()
+
+        // 先低通滤波防混叠
+        val filtered = lowpassFilter.process(input)
+
+        // 降采样
+        val frames = filtered.size / channels
+        val outputFrames = frames / ratio
+        val output = FloatArray(outputFrames * channels)
+
+        // 优化：减少乘法运算
+        var outputIndex = 0
+        for (frame in 0 until outputFrames) {
+            val sourceIndex = frame * ratio * channels
+            for (ch in 0 until channels) output[outputIndex++] = filtered[sourceIndex + ch]
+        }
+
+        return output
+    }
+}
+
+/**
+ * 环形缓冲区
+ */
+class CircularBuffer(private val capacity: Int) {
+    private val buffer = FloatArray(capacity)
+    private var head = 0
+    private var tail = 0
+    private var currentSize = 0
+
+    val size: Int get() = currentSize
+
+    fun addAll(samples: FloatArray) {
+        for (sample in samples) add(sample)
+    }
+
+    fun add(sample: Float) {
+        if (currentSize < capacity) {
+            buffer[tail] = sample
+            tail = (tail + 1) % capacity
+            currentSize++
+        } else {
+            // 缓冲区满了，覆盖最老的数据
+            buffer[tail] = sample
+            tail = (tail + 1) % capacity
+            head = (head + 1) % capacity
+        }
+    }
+
+    fun removeFirst(count: Int) {
+        val actualCount = minOf(count, currentSize)
+        head = (head + actualCount) % capacity
+        currentSize -= actualCount
+    }
+
+    fun get(index: Int): Float {
+        if (index >= currentSize) throw IndexOutOfBoundsException()
+        return buffer[(head + index) % capacity]
+    }
+}
+
+/**
+ * 完整的 K-weighting 实现
+ */
+class CompleteKWeighting(sampleRate: Int, channels: Int) {
+    private val highpass = HighpassFilter(sampleRate, channels)
+    private val shelf = HighFreqShelf(sampleRate, channels)
+
+    fun process(input: FloatArray): FloatArray {
+        val afterHighpass = highpass.process(input)
+        return shelf.process(afterHighpass)
+    }
+}
+
+/**
+ * 低通滤波器
+ */
+class LowpassFilter(
+    sampleRate: Int,
+    private val channels: Int,
+    freq: Float
+) {
+    private val alpha = exp(-2f * PI * freq / sampleRate).toFloat()
+    private val prevOutput = FloatArray(channels)
+
+    fun process(input: FloatArray): FloatArray {
+        val output = FloatArray(input.size)
+        val frames = input.size / channels
+
+        for (frame in 0 until frames) {
+            for (ch in 0 until channels) {
+                val idx = frame * channels + ch
+                output[idx] = alpha * prevOutput[ch] + (1f - alpha) * input[idx]
+                prevOutput[ch] = output[idx]
+            }
+        }
+
+        return output
+    }
+}
+
+/**
+ * 高通滤波器
+ */
+class HighpassFilter(sampleRate: Int, private val channels: Int, freq: Float = 38f) {
+    private val alpha = exp(-2f * PI * freq / sampleRate).toFloat() // 高通
+    private val prevOutput = FloatArray(channels)
+    private val prevInput = FloatArray(channels)
+
+    fun process(input: FloatArray): FloatArray {
+        val output = FloatArray(input.size)
+        val frames = input.size / channels
+
+        for (frame in 0 until frames) {
+            for (ch in 0 until channels) {
+                val idx = frame * channels + ch
+                val currentInput = input[idx]
+
+                output[idx] = alpha * (prevOutput[ch] + currentInput - prevInput[ch])
+
+                prevOutput[ch] = output[idx]
+                prevInput[ch] = currentInput
+            }
+        }
+
+        return output
+    }
+}
+
+/**
+ * 高频搁架滤波器
+ */
+class HighFreqShelf(
+    sampleRate: Int, private val channels: Int,
+    centerFreq: Float = 1500f, gainDb: Float = 4f
+) {
+    private val gainLinear = 10f.pow(gainDb / 20f)
+    private val omega = 2f * PI * centerFreq / sampleRate
+    private val cosOmega = cos(omega).toFloat()
+    private val sinOmega = sin(omega).toFloat()
+
+    // 计算双二阶滤波器系数
+    private val A = gainLinear
+    private val S = 1f
+    private val beta = sqrt(A) / S
+
+    private val b0 = A * ((A + 1f) + (A - 1f) * cosOmega + beta * sinOmega)
+    private val b1 = -2f * A * ((A - 1f) + (A + 1f) * cosOmega)
+    private val b2 = A * ((A + 1f) + (A - 1f) * cosOmega - beta * sinOmega)
+    private val a0 = (A + 1f) - (A - 1f) * cosOmega + beta * sinOmega
+    private val a1 = 2f * ((A - 1f) - (A + 1f) * cosOmega)
+    private val a2 = (A + 1f) - (A - 1f) * cosOmega - beta * sinOmega
+
+    // 归一化系数
+    private val nb0 = b0 / a0
+    private val nb1 = b1 / a0
+    private val nb2 = b2 / a0
+    private val na1 = a1 / a0
+    private val na2 = a2 / a0
+
+    // 历史样本
+    private val x1 = FloatArray(channels)
+    private val x2 = FloatArray(channels)
+    private val y1 = FloatArray(channels)
+    private val y2 = FloatArray(channels)
+
+    fun process(input: FloatArray): FloatArray {
+        val output = FloatArray(input.size)
+        val frames = input.size / channels
+
+        for (frame in 0 until frames) {
+            for (ch in 0 until channels) {
+                val idx = frame * channels + ch
+                val x0 = input[idx]
+
+                // 双二阶滤波器方程
+                val y0 = nb0 * x0 + nb1 * x1[ch] + nb2 * x2[ch] - na1 * y1[ch] - na2 * y2[ch]
+
+                output[idx] = y0
+
+                // 更新历史样本
+                x2[ch] = x1[ch]
+                x1[ch] = x0
+                y2[ch] = y1[ch]
+                y1[ch] = y0
+            }
+        }
+
+        return output
+    }
 }

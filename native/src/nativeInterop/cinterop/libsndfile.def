@@ -1,0 +1,2 @@
+headers = E:/a_dev/proj/DynaCtrl/native/src/nativeInterop/cinterop/sndfile/sndfile.h
+headerFilter = E:/a_dev/proj/DynaCtrl/native/src/nativeInterop/cinterop/sndfile/*

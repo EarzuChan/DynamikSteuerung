@@ -4,10 +4,26 @@ plugins {
 
 kotlin {
     //生成android平台下的 .so
-    arrayOf(androidNativeArm32(), androidNativeArm64(), androidNativeX86(), androidNativeX64()).forEach {
-        it.binaries {
-            // executable()
-            sharedLib { baseName = "dynactrl" }
+    val where = project.rootDir.toString().replace('\\', '/')
+
+    mapOf(
+        /*androidNativeArm32() to "armeabi-v7a",
+        androidNativeArm64() to "arm64-v8a",
+        androidNativeX86() to "x86",*/
+        androidNativeX64() to "x86_64", // 先不贪心，就编译一个
+    ).forEach { (target, archName) ->
+        target.compilations.getByName("main") {
+            cinterops {
+                val libsndfile by creating
+            }
+        }
+
+        target.binaries {
+            sharedLib {
+                baseName = "dynactrl"
+                linkerOpts.add("-L${where}/lib/src/main/jniLibs/$archName")
+                linkerOpts.add("-lsndfile")
+            }
         }
     }
 
