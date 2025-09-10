@@ -11,10 +11,13 @@ import libsndfile.sf_close
 import libsndfile.sf_open
 import libsndfile.sf_read_float
 import me.earzuchan.dynactrl.native.utils.Log
+import platform.posix.loff_tVar
+import kotlin.random.Random
+import kotlin.random.nextLong
 
 class LightweightLoudnessAnalyzer {
     companion object {
-        private const val TAG = "LoudnessAnalyzer"
+        private const val TAG = "LnsAnalNative"
 
         // 性能优化参数
         private const val TIMEOUT_US = 10_000L // 10ms 超时
@@ -32,7 +35,7 @@ class LightweightLoudnessAnalyzer {
     @OptIn(ExperimentalForeignApi::class)
     fun analyzeFile(audioFilePath: String, ultraLight: Boolean = true): Float = memScoped {
         val audioInfo = alloc<SF_INFO>()
-        val audioFile = sf_open(audioFilePath, 10 /*READ*/, audioInfo.ptr)
+        val audioFile = sf_open(audioFilePath, 0x10 /*READ*/, audioInfo.ptr)
 
         try {
             // 获取音频参数
@@ -40,31 +43,31 @@ class LightweightLoudnessAnalyzer {
             val sampleRate = audioInfo.samplerate
             val oriChannelCount = audioInfo.channels
 
-            val totalSamples = frames * sampleRate
+            val totalSamples = frames * oriChannelCount
 
             // TODO：超轻模式：强制单声道处理
             // val newChannelCount = if (ultraLightMode) 1 else oriChannelCount
 
-            Log.d(TAG, "音频：${sampleRate}Hz，${oriChannelCount}ch；超轻：$ultraLight")
+            Log.d(TAG, "音频：${totalSamples}样本，${sampleRate}Hz，${oriChannelCount}ch；超轻：$ultraLight")
 
             val loudnessCalculator = LightweightEbuR128(oriChannelCount, sampleRate)
 
-            val samples = FloatArray(totalSamples.toInt())
+            val samples = FloatArray(totalSamples.toInt()) // 可能是这样
+
             samples.usePinned {
                 val readCount = sf_read_float(audioFile, it.addressOf(0), totalSamples)
-                Log.d(TAG, "读了：${readCount.toInt()}，本需要：$totalSamples")
+                Log.d(TAG, "读了：$readCount，本需要：$totalSamples")
             }
+
+            // 能读到，不过是正负一吗？
+            Log.d(TAG,"测试MAX：${samples.maxOrNull()}")
 
             // TODO：调用掐头去尾和减少样本
 
-            // 计算最终响度
             loudnessCalculator.addSamples(samples)
             val loudness = loudnessCalculator.getIntegratedLoudness()
 
-            Log.d(
-                TAG,
-                "Analysis complete: $loudness LUFS"
-            )
+            Log.d(TAG, "Analysis complete: $loudness LUFS")
 
             sf_close(audioFile)
 
@@ -75,28 +78,12 @@ class LightweightLoudnessAnalyzer {
         }
     }
 
-    /**
-     * 超轻模式样本减少策略
-     */
     private fun reduceSamples(samples: FloatArray, channelCount: Int): FloatArray = when {
         samples.size < 100 -> samples // 样本太少就不减少了
-        else -> {
-            // 方法1：随机抽样（推荐，统计特性最好）
-            // randomSubsample(samples, channelCount, ULTRA_LIGHT_SAMPLE_KEEP_RATIO)
-
-            // 方法2：均匀抽样（性能最好）
-            // uniformSubsample(samples, channelCount, ULTRA_LIGHT_UNIFORM_SKIP)
-
-            // 方法3：伪随机抽样（性能和统计特性的平衡）
-            pseudoRandomSubsample(samples, channelCount)
-        }
+        else -> pseudoRandomSubsample(samples, channelCount)
     }
 
-    /**
-     * 方法3：伪随机抽样 - 性能和随机性的平衡
-     * 使用简单的线性同余生成器避免Random类的开销
-     */
-    private var pseudoRandomSeed = 1145141919 and 0xFFFFFF
+    private var pseudoRandomSeed = Random(114514).nextLong()
 
     private fun pseudoRandomSubsample(samples: FloatArray, channelCount: Int): FloatArray {
         val frames = samples.size / channelCount

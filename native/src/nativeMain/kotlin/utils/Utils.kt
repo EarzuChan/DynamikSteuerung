@@ -6,9 +6,10 @@ import kotlin.math.*
 
 object Log {
     fun d(tag: String, msg: String) = __android_log_print(ANDROID_LOG_DEBUG.toInt(), tag, msg)
+
     fun e(tag: String, msg: String) = __android_log_print(ANDROID_LOG_ERROR.toInt(), tag, msg)
     fun e(tag: String, msg: String, e: Throwable) =
-        __android_log_print(ANDROID_LOG_ERROR.toInt(), tag, "msg\n${e.stackTraceToString()}")
+        __android_log_print(ANDROID_LOG_ERROR.toInt(), tag, "$msg\n${e.stackTraceToString()}")
 
     fun i(tag: String, msg: String) = __android_log_print(ANDROID_LOG_INFO.toInt(), tag, msg)
     fun w(tag: String, msg: String) = __android_log_print(ANDROID_LOG_WARN.toInt(), tag, msg)
@@ -31,44 +32,23 @@ object JniUtils {
 
     // 定义一个接受 JNIEnv* 和 jstring 的 native 函数
     fun CPointer<JNIEnvVar>.getString(jStr: jstring?): String? {
-        if (jStr == null) {
-            Log.e(TAG, "咕咕嘎嘎")
-            return null
-        } else Log.d(TAG, "喵喵")
+        val nonNullJStr = jStr ?: return null.also { Log.w(TAG, "Input jstr was null") }
+        val realEnv = pointed.pointed!!
 
-        val realEnv = pointed.pointed
-
-        if (realEnv == null) {
-            Log.e(TAG, "我阐述你的美")
-            return null
-        } else Log.d(TAG, "It's CryChic：$realEnv")
-
-        // 使用 JNI 函数获取 UTF-8 字符串
-        Log.d(TAG, "熟悉的路牌，好像一直都在这里等待")
-        val getter = realEnv.GetStringChars
-        Log.d(TAG, "最爱的你却已不在")
-
-        if (getter == null) {
-            Log.e(TAG, "摇了我吧爹")
-            return null
-        } else Log.d(TAG, "Av Lujiba")
-
-        val utfChars = getter(this, jStr, null)
-        return if (utfChars != null) {
-            Log.d(TAG, "啊得到：$utfChars")
-
-            // 创建 Kotlin String
-            val kStr = runCatching { utfChars.toKString() }.onFailure {
-                Log.e(TAG, "我阐述你的：${it.stackTraceToString()}")
-            }.getOrNull()
-
-            // 释放 JNI 资源
-            realEnv.ReleaseStringChars!!(this, jStr, utfChars)
-            kStr
-        } else {
-            Log.e(TAG, "布豪")
-            null
+        val utfChars = realEnv.GetStringUTFChars!!(this, nonNullJStr, null) ?: return null.also {
+            Log.e(TAG, "GetStrUTF failed to return a valid pointer")
         }
+
+
+        // 在 try 块中，安全地将 C 字符串转换为 Kotlin 字符串。
+        val kStr = runCatching { utfChars.toKStringFromUtf8() }.onFailure {
+            // 如果转换失败，记录详细的异常信息。
+            Log.e(TAG, "Failed to convert UTF8 cStr to kStr", it)
+        }.getOrNull()
+
+        realEnv.ReleaseStringUTFChars!!(this, nonNullJStr, utfChars)
+
+        return kStr
     }
 }
 
@@ -105,7 +85,7 @@ class AntiAliasingDownsampler(private val ratio: Int, private val channels: Int,
 }
 
 /**
- * 环形缓冲区
+ * 修正后的环形缓冲区 - 防止意外覆盖
  */
 class CircularBuffer(private val capacity: Int) {
     private val buffer = FloatArray(capacity)
@@ -115,20 +95,13 @@ class CircularBuffer(private val capacity: Int) {
 
     val size: Int get() = currentSize
 
-    fun addAll(samples: FloatArray) {
-        for (sample in samples) add(sample)
-    }
-
     fun add(sample: Float) {
         if (currentSize < capacity) {
             buffer[tail] = sample
             tail = (tail + 1) % capacity
             currentSize++
         } else {
-            // 缓冲区满了，覆盖最老的数据
-            buffer[tail] = sample
-            tail = (tail + 1) % capacity
-            head = (head + 1) % capacity
+            throw IllegalStateException("Buffer is full! Cannot add more samples without removing first.")
         }
     }
 

@@ -2,9 +2,11 @@ package me.earzuchan.dynactrl.demoapp
 
 import android.annotation.SuppressLint
 import android.content.Context
+import android.database.Cursor
 import android.net.Uri
 import android.os.Build
 import android.os.Bundle
+import android.provider.OpenableColumns
 import androidx.activity.ComponentActivity
 import androidx.activity.compose.setContent
 import androidx.activity.enableEdgeToEdge
@@ -21,6 +23,7 @@ import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.platform.LocalContext
 import androidx.compose.ui.unit.dp
+import androidx.core.net.toFile
 import androidx.core.net.toUri
 import androidx.media3.common.MediaItem
 import androidx.media3.common.Player
@@ -176,23 +179,38 @@ class MainActivity : ComponentActivity() {
         processedPlayer = ExoPlayer.Builder(this, renderersFactory).build()
     }
 
-    private fun handleFileSelection(uri: Uri) {
-        try {
-            val inputStream = contentResolver.openInputStream(uri)
-            val tempFile = File(cacheDir, "temp_audio_${System.currentTimeMillis()}.wav")
-
-            inputStream?.use { input -> tempFile.outputStream().use { output -> input.copyTo(output) } }
-
-            selectedFile = tempFile
-            loudnessInfo = null
-
-            // 异步分析音频
-            analyzeAudioFile(tempFile)
-
-        } catch (e: Exception) {
-            e.printStackTrace()
-            // 这里可以显示错误提示
+    /**
+     * 从 Uri 中获取文件名。
+     */
+    private fun getFileNameFromUri(uri: Uri): String? {
+        var fileName: String? = null
+        val cursor: Cursor? = contentResolver.query(uri, null, null, null, null)
+        cursor?.use {
+            if (it.moveToFirst()) {
+                val nameIndex = it.getColumnIndex(OpenableColumns.DISPLAY_NAME)
+                if (nameIndex != -1) fileName = it.getString(nameIndex)
+            }
         }
+        return fileName ?: System.currentTimeMillis().toString()
+    }
+
+    private fun handleFileSelection(uri: Uri) = try {
+        val inputStream = contentResolver.openInputStream(uri)
+
+        // 从 Uri 获取原始文件名
+        val originalFileName = getFileNameFromUri(uri)
+        val tempFile = File(cacheDir, "temp_${originalFileName}")
+
+        inputStream?.use { input -> tempFile.outputStream().use { output -> input.copyTo(output) } }
+
+        selectedFile = tempFile
+        loudnessInfo = null
+
+        // 异步分析音频
+        analyzeAudioFile(tempFile)
+    } catch (e: Exception) {
+        e.printStackTrace()
+        // 这里可以显示错误提示
     }
 
     private fun analyzeAudioFile(file: File) {
@@ -217,12 +235,12 @@ class MainActivity : ComponentActivity() {
         }
     }
 
-    private fun stopRaw(){
+    private fun stopRaw() {
         rawPlayer?.pause()
         isPlayingRaw = false
     }
 
-    private fun stopProcessed(){
+    private fun stopProcessed() {
         processedPlayer?.pause()
         isPlayingProcessed = false
     }
