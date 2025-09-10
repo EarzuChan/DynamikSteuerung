@@ -2,6 +2,8 @@ package me.earzuchan.dynactrl.native
 
 import me.earzuchan.dynactrl.native.utils.CircularBuffer
 import me.earzuchan.dynactrl.native.utils.CompleteKWeighting
+import me.earzuchan.dynactrl.native.utils.Log
+import platform.posix.INFINITY
 import kotlin.math.*
 
 /**
@@ -9,6 +11,7 @@ import kotlin.math.*
  */
 class LightweightEbuR128(private val channels: Int, sampleRate: Int) {
     companion object {
+        private const val TAG = "EbuR128Native"
         private const val ABSOLUTE_THRESHOLD_LUFS = -70f
         private const val RELATIVE_THRESHOLD_LU = -10f
         private const val BLOCK_SIZE_SEC = 0.4f // 400ms块
@@ -107,14 +110,14 @@ class LightweightEbuR128(private val channels: Int, sampleRate: Int) {
         // 自动finalize
         if (!finalized) autoFinalize()
 
-        if (blockEnergies.size < 2) return Float.NEGATIVE_INFINITY
+        if (blockEnergies.size < 2) return ABSOLUTE_THRESHOLD_LUFS.also { Log.e(TAG, "能量块儿太少") }
 
         // 相对门控
         val meanEnergy = blockEnergies.average().toFloat()
         val relativeThreshold = meanEnergy * 10f.pow(RELATIVE_THRESHOLD_LU / 10f)
 
         val gatedEnergies = blockEnergies.filter { it >= relativeThreshold }
-        if (gatedEnergies.isEmpty()) return Float.NEGATIVE_INFINITY
+        if (gatedEnergies.isEmpty()) return ABSOLUTE_THRESHOLD_LUFS.also { Log.e(TAG, "不响啊，很不响啊") }
 
         val gatedMeanEnergy = gatedEnergies.average().toFloat()
 
@@ -128,6 +131,7 @@ class LightweightEbuR128(private val channels: Int, sampleRate: Int) {
             val blockEnergy = calculateBlockEnergy()
             if (blockEnergy > absoluteThresholdEnergy) blockEnergies.add(blockEnergy)
         }
+
         finalized = true
     }
 }
