@@ -7,14 +7,14 @@ kotlin {
     val where = project.rootDir.toString().replace('\\', '/')
 
     mapOf(
-        /*androidNativeArm32() to "armeabi-v7a",
-        androidNativeArm64() to "arm64-v8a",
-        androidNativeX86() to "x86",*/
-        androidNativeX64() to "x86_64", // 先不贪心，就编译一个
+        androidNativeArm32() to "armeabi-v7a", androidNativeArm64() to "arm64-v8a",
+        androidNativeX86() to "x86", androidNativeX64() to "x86_64",
     ).forEach { (target, archName) ->
         target.compilations.getByName("main") {
             cinterops {
-                val libsndfile by creating
+                val libsndfile by creating {
+                    header("${where}/native/include/sndfile.h")
+                }
             }
         }
 
