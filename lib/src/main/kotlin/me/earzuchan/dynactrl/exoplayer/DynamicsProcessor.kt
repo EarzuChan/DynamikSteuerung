@@ -10,35 +10,14 @@ import me.earzuchan.dynactrl.models.AudioLoudnessInfo
 import java.nio.ByteBuffer
 import kotlin.math.pow
 
-// 暂时不捅到native去
-/*
 @OptIn(UnstableApi::class)
 class DynamicsProcessor : BaseAudioProcessor() {
-    fun setCurrentTrackLoudness(loudnessInfo: AudioLoudnessInfo) {
-    }
-
-    override fun onConfigure(inputAudioFormat: AudioProcessor.AudioFormat): AudioProcessor.AudioFormat {
-        return inputAudioFormat
-    }
-
-    override fun queueInput(inputBuffer: ByteBuffer) {
-    }
-
-    override fun onFlush() {
-    }
-
-    override fun onReset() {
-    }
-}*/
-
-@OptIn(UnstableApi::class)
-class DynamicsProcessor : BaseAudioProcessor() {
-    companion object {
-        private const val TAG = "DynamicsProcessor"
-        private const val TARGET_LUFS = -14f // Spotify标准
-        private const val LIMITER_THRESHOLD = 0.95f // 限制器阈值
-        private const val LIMITER_ATTACK_TIME = 0.001f // 1ms攻击时间
-        private const val LIMITER_RELEASE_TIME = 0.01f // 10ms释放时间
+    private companion object {
+        const val TAG = "DynamicsProcessor"
+        const val TARGET_LUFS = -14f // Spotify标准
+        const val LIMITER_THRESHOLD = 0.95f // 限制器阈值
+        const val LIMITER_ATTACK_TIME = 0.001f // 1ms攻击时间
+        const val LIMITER_RELEASE_TIME = 0.01f // 10ms释放时间
     }
 
     private var currentLoudnessInfo: AudioLoudnessInfo? = null

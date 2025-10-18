@@ -8,13 +8,14 @@ import libsndfile.sf_read_float
 import me.earzuchan.dynactrl.native.utils.Log
 import kotlin.random.Random
 
-class LightweightLoudnessAnalyzer {
-    companion object {
-        private const val TAG = "LoudnessAnalyzerNative"
+object LightweightLoudnessAnalyzer {
+    private const val TAG = "LoudnessAnalyzerNative"
 
-        // 性能优化参数
-        private const val ULTRA_LIGHT_SAMPLE_KEEP_RATIO = 0.6f // 超轻模式保留60%的样本
-    }
+    // 性能优化参数
+    private const val ULTRA_LIGHT_SAMPLE_KEEP_RATIO = 0.6f // 超轻模式保留60%的样本
+
+    private var randomSeed = Random(114514).nextLong()
+
 
     @OptIn(ExperimentalForeignApi::class)
     fun analyzeFile(audioFilePath: String, ultraLight: Boolean = true): Float = memScoped {
@@ -26,7 +27,10 @@ class LightweightLoudnessAnalyzer {
             val frames = audioInfo.frames
             val sampleRate = audioInfo.samplerate
 
-            if (frames == 0L && sampleRate == 0) return (-70f).also { Log.e(TAG, "Not supported：$audioFilePath") }
+            if (frames == 0L && sampleRate == 0) {
+                Log.e(TAG, "不支持：$audioFilePath")
+                return -70f
+            }
 
             val channelCount = audioInfo.channels
             val totalSamples = frames * channelCount
@@ -42,9 +46,6 @@ class LightweightLoudnessAnalyzer {
                 Log.d(TAG, "读了：$readCount，本需要：$totalSamples")
             }
 
-            /*// 能读到，不过是正负一吗？
-            Log.d(TAG, "测试MAX：${samples.maxOrNull()}")*/
-
             // 减少样本
             val reducedSamples = if (ultraLight) reduceSamples(samples, channelCount) else samples
             Log.d(TAG, "处理：${reducedSamples.size}，原：${samples.size}")
@@ -56,10 +57,11 @@ class LightweightLoudnessAnalyzer {
 
             sf_close(audioFile)
 
-            return loudness
+            loudness
         } catch (e: Exception) {
             Log.e(TAG, "分析失败", e)
-            return -70f
+
+            -70f
         }
     }
 
@@ -67,8 +69,6 @@ class LightweightLoudnessAnalyzer {
         samples.size < 100 -> samples // 样本太少就不减少了
         else -> randomSubsample(samples, channelCount)
     }
-
-    private var randomSeed = Random(114514).nextLong()
 
     private fun randomSubsample(samples: FloatArray, channelCount: Int): FloatArray {
         val frames = samples.size / channelCount

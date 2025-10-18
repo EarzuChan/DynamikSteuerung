@@ -18,7 +18,7 @@ fun analyzeFile(env: CPointer<JNIEnvVar>, jClass: jclass, jFilePath: jstring): j
     val filePath = env.getString(jFilePath) ?: return -70f
 
     Log.i(TAG, "计算响度，文件：$filePath")
-    val result = LightweightLoudnessAnalyzer().analyzeFile(filePath)
+    val result = LightweightLoudnessAnalyzer.analyzeFile(filePath)
     Log.i(TAG, "计算结果：$result")
 
     return result

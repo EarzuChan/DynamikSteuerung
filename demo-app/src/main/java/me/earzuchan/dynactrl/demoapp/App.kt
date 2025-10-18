@@ -65,8 +65,6 @@ fun AppTheme(
 
 @UnstableApi
 class MainActivity : ComponentActivity() {
-    // 音频处理相关
-    private val loudnessAnalyzer = LightweightLoudnessAnalyzer()
     private val dynamicsProcessor = DynamicsProcessor()
     private var processedPlayer: ExoPlayer? = null
     private var rawPlayer: ExoPlayer? = null
@@ -219,7 +217,7 @@ class MainActivity : ComponentActivity() {
         // 在后台线程分析
         CoroutineScope(Dispatchers.IO).launch {
             try {
-                val analysis = loudnessAnalyzer.analyzeFile(file)
+                val analysis = LightweightLoudnessAnalyzer.analyzeFile(file)
 
                 withContext(Dispatchers.Main) {
                     loudnessInfo = analysis

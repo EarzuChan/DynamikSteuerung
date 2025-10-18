@@ -1,21 +1,20 @@
 package me.earzuchan.dynactrl.native
 
-import me.earzuchan.dynactrl.native.utils.CircularBuffer
 import me.earzuchan.dynactrl.native.utils.CompleteKWeighting
 import me.earzuchan.dynactrl.native.utils.Log
-import platform.posix.INFINITY
-import kotlin.math.*
+import kotlin.math.log10
+import kotlin.math.pow
 
 /**
  * 轻量级的 EBU R128 实现 - 改进版
  */
 class LightweightEbuR128(private val channels: Int, sampleRate: Int) {
-    companion object {
-        private const val TAG = "EbuR128Native"
-        private const val ABSOLUTE_THRESHOLD_LUFS = -70f
-        private const val RELATIVE_THRESHOLD_LU = -10f
-        private const val BLOCK_SIZE_SEC = 0.4f // 400ms块
-        private const val OVERLAP_RATIO = 0.75f // 75% 重叠
+    private companion object {
+        const val TAG = "EbuR128Native"
+        const val ABSOLUTE_THRESHOLD_LUFS = -70f
+        const val RELATIVE_THRESHOLD_LU = -10f
+        const val BLOCK_SIZE_SEC = 0.4f // 400ms块
+        const val OVERLAP_RATIO = 0.75f // 75% 重叠
     }
 
     private val blockSize = (sampleRate * BLOCK_SIZE_SEC).toInt()
