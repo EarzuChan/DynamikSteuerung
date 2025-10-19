@@ -1,34 +1,35 @@
-package me.earzuchan.dynactrl
+package me.earzuchan.tetsu
 
 import android.media.MediaCodec
 import android.media.MediaExtractor
 import android.media.MediaFormat
 import android.util.Log
-import me.earzuchan.dynactrl.models.AudioLoudnessInfo
+import me.earzuchan.tetsu.models.AudioData
+import me.earzuchan.tetsu.models.AudioLoudnessInfo
 import java.io.File
 import java.nio.ByteBuffer
 import java.nio.ByteOrder
 
-class AudioData(
-    val samples: FloatArray,
-    val sampleRate: Int,
-    val channelCount: Int
-)
-
 object LightweightLoudnessAnalyzer {
     private const val TAG = "LoudnessAnalyzer"
+    private const val ERR_VALUE = -70f
 
     fun analyzeFile(audioFile: File): AudioLoudnessInfo {
+        if (!audioFile.exists() || !audioFile.canRead()) {
+            Log.e(TAG, "文件不存在或不可读")
+            return AudioLoudnessInfo(ERR_VALUE)
+        }
+
         val filePath = audioFile.absolutePath
 
         val result = if (filePath.endsWith(".m4a")) {
-            Log.w(TAG, "走JVM解码")
+            Log.d(TAG, "走JVM解码")
 
             val data = FallBackDecoder.decode(filePath)
 
-            if (data != null) DynaCtrl.nativeCalculateLoudness(data.samples, data.sampleRate, data.channelCount)
-            else (-70f).also { Log.w(TAG, "解码出了个Null") }
-        } else DynaCtrl.nativeAnalyzeFile(filePath)
+            if (data != null) Tetsu.nativeCalculateLoudness(data.samples, data.sampleRate, data.channelCount)
+            else ERR_VALUE.also { Log.w(TAG, "解码出了个Null") }
+        } else Tetsu.nativeAnalyzeFile(filePath)
 
         Log.i(TAG, "分析结果：$result")
 

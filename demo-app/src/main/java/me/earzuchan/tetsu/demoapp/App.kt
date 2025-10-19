@@ -1,4 +1,4 @@
-package me.earzuchan.dynactrl.demoapp
+package me.earzuchan.tetsu.demoapp
 
 import android.annotation.SuppressLint
 import android.content.Context
@@ -23,7 +23,6 @@ import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.platform.LocalContext
 import androidx.compose.ui.unit.dp
-import androidx.core.net.toFile
 import androidx.core.net.toUri
 import androidx.media3.common.MediaItem
 import androidx.media3.common.Player
@@ -36,10 +35,9 @@ import kotlinx.coroutines.CoroutineScope
 import kotlinx.coroutines.Dispatchers
 import kotlinx.coroutines.launch
 import kotlinx.coroutines.withContext
-import me.earzuchan.dynactrl.DynaCtrl
-import me.earzuchan.dynactrl.exoplayer.DynamicsProcessor
-import me.earzuchan.dynactrl.models.AudioLoudnessInfo
-import me.earzuchan.dynactrl.LightweightLoudnessAnalyzer
+import me.earzuchan.tetsu.LightweightLoudnessAnalyzer
+import me.earzuchan.tetsu.exoplayer.DynamicsProcessor
+import me.earzuchan.tetsu.models.AudioLoudnessInfo
 import java.io.File
 
 @Composable
@@ -88,9 +86,6 @@ class MainActivity : ComponentActivity() {
 
         // 初始化播放器
         initPlayers()
-
-        // 初始化 DynaCtrl
-        DynaCtrl.init()
 
         setContent {
             AppTheme {
@@ -180,7 +175,7 @@ class MainActivity : ComponentActivity() {
     /**
      * 从 Uri 中获取文件名。
      */
-    private fun getFileNameFromUri(uri: Uri): String? {
+    private fun getFileNameFromUri(uri: Uri): String {
         var fileName: String? = null
         val cursor: Cursor? = contentResolver.query(uri, null, null, null, null)
         cursor?.use {

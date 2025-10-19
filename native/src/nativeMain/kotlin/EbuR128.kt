@@ -1,7 +1,7 @@
-package me.earzuchan.dynactrl.native
+package me.earzuchan.tetsu.native
 
-import me.earzuchan.dynactrl.native.utils.CompleteKWeighting
-import me.earzuchan.dynactrl.native.utils.Log
+import me.earzuchan.tetsu.native.utils.CompleteKWeighting
+import me.earzuchan.tetsu.native.utils.Log
 import kotlin.math.log10
 import kotlin.math.pow
 

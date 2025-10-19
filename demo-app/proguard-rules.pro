@@ -20,4 +20,4 @@
 # hide the original source file name.
 #-renamesourcefileattribute SourceFile
 
--keep class me.earzuchan.dynactrl.DynaCtrl { *; }
+-keep class me.earzuchan.tetsu.Tetsu { *; }

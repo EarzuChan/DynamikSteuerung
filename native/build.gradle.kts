@@ -21,7 +21,7 @@ kotlin {
 
         target.binaries {
             sharedLib {
-                baseName = "dynactrl"
+                baseName = "tetsu"
                 linkerOpts.add("-L${where}/lib/src/main/jniLibs/$archName")
                 linkerOpts.add("-lsndfile")
             }

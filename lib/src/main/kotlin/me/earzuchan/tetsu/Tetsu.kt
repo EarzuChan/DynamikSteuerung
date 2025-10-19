@@ -1,11 +1,11 @@
-package me.earzuchan.dynactrl
+package me.earzuchan.tetsu
 
 import android.util.Log
 import java.lang.System
 import java.nio.ByteBuffer
 
-object DynaCtrl {
-    private const val TAG = "DynaCtrl"
+internal object Tetsu {
+    private const val TAG = "Tetsu"
 
     // 常规
 
@@ -17,9 +17,9 @@ object DynaCtrl {
 
     // 初始化
 
-    fun init() {
-        Log.i(TAG, "init")
+    init {
+        Log.i(TAG, "初始化")
 
-        System.loadLibrary("dynactrl")
+        System.loadLibrary("tetsu")
     }
 }

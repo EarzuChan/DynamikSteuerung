@@ -1,21 +1,21 @@
 @file:OptIn(ExperimentalForeignApi::class, ExperimentalNativeApi::class)
 
-package me.earzuchan.dynactrl.native
+package me.earzuchan.tetsu.native
 
 import kotlinx.cinterop.CPointer
 import kotlinx.cinterop.ExperimentalForeignApi
-import me.earzuchan.dynactrl.native.utils.JniUtils.getFloatArray
-import me.earzuchan.dynactrl.native.utils.JniUtils.getString
-import me.earzuchan.dynactrl.native.utils.JniUtils.isOk
-import me.earzuchan.dynactrl.native.utils.Log
+import me.earzuchan.tetsu.native.utils.JniUtils.getFloatArray
+import me.earzuchan.tetsu.native.utils.JniUtils.getString
+import me.earzuchan.tetsu.native.utils.JniUtils.isOk
+import me.earzuchan.tetsu.native.utils.Log
 import platform.android.*
 import kotlin.experimental.ExperimentalNativeApi
 
-private const val TAG = "DynaCtrlNative"
+private const val TAG = "TetsuNative"
 
 // 普通代码
 
-@CName("Java_me_earzuchan_dynactrl_DynaCtrl_nativeAnalyzeFile")
+@CName("Java_me_earzuchan_tetsu_Tetsu_nativeAnalyzeFile")
 fun analyzeFile(env: CPointer<JNIEnvVar>, jClass: jclass, jFilePath: jstring): jfloat {
     val filePath = env.getString(jFilePath) ?: return -70f
 
@@ -26,13 +26,13 @@ fun analyzeFile(env: CPointer<JNIEnvVar>, jClass: jclass, jFilePath: jstring): j
     return result
 }
 
-@CName("Java_me_earzuchan_dynactrl_DynaCtrl_nativeCalculateLoudness")
+@CName("Java_me_earzuchan_tetsu_Tetsu_nativeCalculateLoudness")
 fun calculateLoudness(
     env: CPointer<JNIEnvVar>, jClass: jclass,
     pcmData: jfloatArray, sampleRate: jint, channelCount: jint
 ): jfloat {
     val pcmArr = env.getFloatArray(pcmData)
-    if (pcmArr.isEmpty()) return (-70f).also { Log.w(TAG, "空数组我计算勾八响度") }
+    if (pcmArr.isEmpty()) return (-70f).also { Log.w(TAG, "空数组，不能计算响度") }
 
     Log.i(TAG, "直接通过解码的数据计算响度")
     val result = LightweightLoudnessAnalyzer.calculateLoudness(AudioData(pcmArr, sampleRate, channelCount))
@@ -47,7 +47,7 @@ fun calculateLoudness(
 fun jniOnLoad(vm: CPointer<JavaVMVar>): jint {
     val ok = vm.isOk()
 
-    Log.d(TAG, "JNI，OK：$ok；USING：1.6")
+    Log.d(TAG, "JNI：正常：$ok，版本：1.6")
 
     return JNI_VERSION_1_6
 }

@@ -4,7 +4,7 @@ plugins {
     id("org.jetbrains.kotlin.plugin.compose")
 }
 
-val appId = "me.earzuchan.dynactrl.demoapp"
+val appId = "me.earzuchan.tetsu.demoapp"
 
 android {
     namespace = appId
@@ -21,7 +21,7 @@ android {
     }
 
     packagingOptions{
-        exclude("assets/dexopt/**")
+        exclude("assets/dexopt/**") // 搞不掉，我没招了
         exclude("DebugProbesKt.bin")
         exclude("kotlin/**")
         exclude("kotlin-tooling-metadata.json")

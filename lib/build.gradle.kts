@@ -3,7 +3,7 @@ plugins {
     id("org.jetbrains.kotlin.android")
 }
 
-val libId = "me.earzuchan.dynactrl"
+val libId = "me.earzuchan.tetsu"
 
 android {
     namespace = libId
@@ -27,7 +27,7 @@ android {
 }
 
 dependencies {
-    val ktVer = "2.2.10"
+    val ktVer = "2.2.20"
     implementation("org.jetbrains.kotlin:kotlin-stdlib:$ktVer")
 
     // AndroidX 核心库
@@ -59,9 +59,9 @@ val buildAndCopyNativeLibs = tasks.register("buildAndCopyNativeLibs") {
             "androidNativeArm64" to "arm64-v8a",
         )
 
-        // 对于每个架构，复制 libdynactrl.so 到对应的 JNI libs 目录
+        // 对于每个架构，复制 libtetsu.so 到对应的 JNI libs 目录
         architectureMappings.forEach { (buildArch, jniArch) ->
-            val sourceFile = nativeProject.file("build/bin/$buildArch/releaseShared/libdynactrl.so")
+            val sourceFile = nativeProject.file("build/bin/$buildArch/releaseShared/libtetsu.so")
 
             if (!sourceFile.exists()) println("${sourceFile.path}不存在，${jniArch}的构建可能失败了")
             else {

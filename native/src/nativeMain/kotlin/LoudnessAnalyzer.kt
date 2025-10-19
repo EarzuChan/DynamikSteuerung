@@ -1,10 +1,10 @@
-package me.earzuchan.dynactrl.native
+package me.earzuchan.tetsu.native
 
 import libsndfile.SF_INFO
 import libsndfile.sf_close
 import libsndfile.sf_open
 import libsndfile.sf_read_float
-import me.earzuchan.dynactrl.native.utils.Log
+import me.earzuchan.tetsu.native.utils.Log
 import kotlin.random.Random
 import kotlinx.cinterop.ExperimentalForeignApi
 import kotlinx.cinterop.addressOf
@@ -90,10 +90,8 @@ object LightweightLoudnessAnalyzer {
                 val readCount = sf_read_float(audioFile, pinnedSamples.addressOf(0), totalSamples)
                 Log.d(TAG, "读取了: $readCount 样本, 预期: $totalSamples")
 
-                if (readCount != totalSamples) {
-                    Log.w(TAG, "实际读取的样本数与预期不符！")
-                    // CHECK：根据需求，这里可以决定是返回 null 还是继续使用已读取的部分
-                }
+                // 不过好像并无什么不行
+                if (readCount != totalSamples) Log.d(TAG, "实际读取的样本数与预期不符！")
             }
 
             return AudioData(samples, sampleRate, channelCount)

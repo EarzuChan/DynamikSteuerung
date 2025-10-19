@@ -1,4 +1,4 @@
-package me.earzuchan.dynactrl.exoplayer
+package me.earzuchan.tetsu.exoplayer
 
 import android.util.Log
 import androidx.annotation.OptIn
@@ -6,7 +6,7 @@ import androidx.media3.common.C
 import androidx.media3.common.audio.AudioProcessor
 import androidx.media3.common.audio.BaseAudioProcessor
 import androidx.media3.common.util.UnstableApi
-import me.earzuchan.dynactrl.models.AudioLoudnessInfo
+import me.earzuchan.tetsu.models.AudioLoudnessInfo
 import java.nio.ByteBuffer
 import kotlin.math.pow
 
@@ -42,10 +42,10 @@ class DynamicsProcessor : BaseAudioProcessor() {
         val loudnessInfo = currentLoudnessInfo ?: return
         val lufs = loudnessInfo.lufs
 
-        gainScale = (if (lufs.isNaN() || lufs.isInfinite() || lufs < -70f) 1.0f
+        gainScale = (if (lufs.isNaN() || lufs.isInfinite() || lufs <= -70f) 1.0f
         else 10.0.pow((TARGET_LUFS - lufs) / 20.0).toFloat())
 
-        Log.d(TAG, "Track LUFS: $lufs, Calculated gain scale: $gainScale")
+        Log.d(TAG, "轨道响度：$lufs，增益尺度：$gainScale")
     }
 
     override fun onConfigure(inputAudioFormat: AudioProcessor.AudioFormat): AudioProcessor.AudioFormat {

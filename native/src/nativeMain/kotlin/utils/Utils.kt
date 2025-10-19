@@ -1,4 +1,4 @@
-package me.earzuchan.dynactrl.native.utils
+package me.earzuchan.tetsu.native.utils
 
 import kotlinx.cinterop.*
 import platform.android.*

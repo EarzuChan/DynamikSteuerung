@@ -1,4 +1,4 @@
-# DynaCtrl
+# Tetsu
 
 [中文版](README_CN.md)
 
@@ -78,7 +78,7 @@ object LightweightLoudnessAnalyzer {
 
 **ExoPlayer Integration**
 
-The `DynamicsProcessor` class (`lib/src/main/kotlin/me/earzuchan/dynactrl/exoplayer/DynamicsProcessor.kt`) provides:
+The `DynamicsProcessor` class (`lib/src/main/kotlin/me/earzuchan/tetsu/exoplayer/DynamicsProcessor.kt`) provides:
 
 - Real-time audio processing during playback
 - Loudness normalization to -14 LUFS (broadcast standard)
@@ -94,7 +94,7 @@ processor.setCurrentTrackLoudness(loudnessInfo)
 
 **Data Models**
 
-Defined in `lib/src/main/kotlin/me/earzuchan/dynactrl/models/Models.kt`:
+Defined in `lib/src/main/kotlin/me/earzuchan/tetsu/models/Models.kt`:
 
 ```kotlin
 data class AudioLoudnessInfo(

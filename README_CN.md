@@ -1,4 +1,4 @@
-# DynaCtrl
+# Tetsu
 
 [English Version](README.md)
 
@@ -78,7 +78,7 @@ object LightweightLoudnessAnalyzer {
 
 **ExoPlayer集成**
 
-`DynamicsProcessor`类（`lib/src/main/kotlin/me/earzuchan/dynactrl/exoplayer/DynamicsProcessor.kt`）提供：
+`DynamicsProcessor`类（`lib/src/main/kotlin/me/earzuchan/tetsu/exoplayer/DynamicsProcessor.kt`）提供：
 
 - 播放期间实时音频处理
 - 响度标准化至-14 LUFS（广播标准）
@@ -94,7 +94,7 @@ processor.setCurrentTrackLoudness(loudnessInfo)
 
 **数据模型**
 
-定义在`lib/src/main/kotlin/me/earzuchan/dynactrl/models/Models.kt`中：
+定义在`lib/src/main/kotlin/me/earzuchan/tetsu/models/Models.kt`中：
 
 ```kotlin
 data class AudioLoudnessInfo(
