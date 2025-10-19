@@ -16,12 +16,22 @@ android {
         targetSdk = 36
         versionCode = 2
         versionName = "1.5"
+
+        ndk { abiFilters += listOf("armeabi-v7a", "arm64-v8a", "x86_64") }
+    }
+
+    packagingOptions{
+        exclude("assets/**")
+        exclude("DebugProbesKt.bin")
+        exclude("kotlin/**")
+        exclude("kotlin-tooling-metadata.json")
     }
 
     buildTypes {
         release {
-            // isMinifyEnabled = true
-            // proguardFiles(getDefaultProguardFile("proguard-android-optimize.txt"), "proguard-rules.pro")
+            isMinifyEnabled = true
+            isShrinkResources = true
+            proguardFiles(getDefaultProguardFile("proguard-android-optimize.txt"), "proguard-rules.pro")
         }
     }
 
@@ -37,10 +47,10 @@ android {
 
 dependencies {
     implementation("androidx.core:core-ktx:1.17.0")
-    implementation("androidx.lifecycle:lifecycle-runtime-ktx:2.9.3")
-    implementation("androidx.activity:activity-compose:1.10.1")
+    implementation("androidx.lifecycle:lifecycle-runtime-ktx:2.9.4")
+    implementation("androidx.activity:activity-compose:1.11.0")
 
-    implementation(platform("androidx.compose:compose-bom:2025.08.01"))
+    implementation(platform("androidx.compose:compose-bom:2025.10.00"))
     implementation("androidx.compose.ui:ui")
     implementation("androidx.compose.ui:ui-graphics")
     implementation("androidx.compose.ui:ui-tooling-preview")

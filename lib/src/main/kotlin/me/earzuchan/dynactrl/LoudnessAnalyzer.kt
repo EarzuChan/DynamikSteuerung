@@ -3,16 +3,17 @@ package me.earzuchan.dynactrl
 import android.media.MediaCodec
 import android.media.MediaExtractor
 import android.media.MediaFormat
-import android.os.Handler
-import android.os.HandlerThread
 import android.util.Log
 import me.earzuchan.dynactrl.models.AudioLoudnessInfo
 import java.io.File
 import java.nio.ByteBuffer
 import java.nio.ByteOrder
-import java.util.concurrent.CountDownLatch
-import java.util.concurrent.TimeUnit
-import kotlin.math.min
+
+class AudioData(
+    val samples: FloatArray,
+    val sampleRate: Int,
+    val channelCount: Int
+)
 
 object LightweightLoudnessAnalyzer {
     private const val TAG = "LoudnessAnalyzer"
@@ -21,9 +22,12 @@ object LightweightLoudnessAnalyzer {
         val filePath = audioFile.absolutePath
 
         val result = if (filePath.endsWith(".m4a")) {
-            Log.w(TAG, "走备用分析器")
+            Log.w(TAG, "走JVM解码")
 
-            FallBackAnalyzer().analyze(audioFile)
+            val data = FallBackDecoder.decode(filePath)
+
+            if (data != null) DynaCtrl.nativeCalculateLoudness(data.samples, data.sampleRate, data.channelCount)
+            else (-70f).also { Log.w(TAG, "解码出了个Null") }
         } else DynaCtrl.nativeAnalyzeFile(filePath)
 
         Log.i(TAG, "分析结果：$result")
@@ -32,259 +36,147 @@ object LightweightLoudnessAnalyzer {
     }
 }
 
-private class FallBackAnalyzer {
-    private companion object {
-        const val TAG = "FallBackAnalyzer"
-    }
 
-    // Buffer 池，复用减少 GC
-    private val bufferPool = object {
-        private val pool = ArrayDeque<ByteBuffer>()
-        private val maxPoolSize = 4
-
-        fun acquire(): ByteBuffer = synchronized(pool) {
-            return pool.removeFirstOrNull() ?: createBuffer()
-        }
-
-        fun release(buffer: ByteBuffer) {
-            buffer.clear()
-            synchronized(pool) {
-                if (pool.size < maxPoolSize) pool.addLast(buffer)
-            }
-        }
-
-        // 2MB DirectBuffer，足够大以减少传输次数
-        private fun createBuffer(): ByteBuffer = ByteBuffer.allocateDirect(2 * 1024 * 1024)
-            .order(ByteOrder.nativeOrder())
-    }
+// 性能比较差，会OOM。未来想办法优化成多次推给本地：没办法了，K/N丢我对象字段这一块
+private object FallBackDecoder {
+    private const val TAG = "FallBackDecoder"
+    private const val TIMEOUT_US = 5000L // 5ms
 
     /**
-     * 分析音频文件响度
-     * @param filePath 文件路径
-     * @return 响度值 (LUFS)，失败返回 -70
+     * 解码指定的音频文件。
+     *
+     * @param filePath 音频文件的绝对路径。
+     * @return 如果解码成功，返回一个包含 PCM 数据的 AudioData 对象；否则返回 null。
      */
-    fun analyze(file: File): Float {
-        if (!file.exists() || !file.canRead())
-            return (-70f).also { Log.w(TAG, "文件不存在或不可读") }
-
-        return try {
-            analyzeInternal(file.absolutePath)
-        } catch (e: Exception) {
-            (-70f).also { Log.w(TAG, "替代流分析失败", e) }
+    fun decode(filePath: String): AudioData? {
+        val audioFile = File(filePath)
+        if (!audioFile.exists() || !audioFile.canRead()) {
+            Log.e(TAG, "无权限（恼）：$filePath")
+            return null
         }
-    }
 
-    private fun analyzeInternal(filePath: String): Float {
-        val extractor = MediaExtractor()
+        var extractor: MediaExtractor? = null
         var codec: MediaCodec? = null
-
         try {
-            extractor.setDataSource(filePath)
+            // 1. 初始化 MediaExtractor 并查找音频轨道
+            extractor = MediaExtractor().apply { setDataSource(audioFile.absolutePath) }
+            val (trackIndex, format) = findAudioTrackFormat(extractor)
+                ?: run {
+                    Log.e(TAG, "无啊音轨：$filePath")
+                    return null
+                }
 
-            // 找到音频轨道
-            val audioTrackIndex = findAudioTrack(extractor)
-                ?: return (-70f).also { Log.w(TAG, "找不到音频轨道") }
-
-            extractor.selectTrack(audioTrackIndex)
-            val format = extractor.getTrackFormat(audioTrackIndex)
-
-            // 获取音频参数
-            val mime = format.getString(MediaFormat.KEY_MIME)
-                ?: return (-70f).also { Log.w(TAG, "获取不到音频参数") }
+            val mime = format.getString(MediaFormat.KEY_MIME) ?: return null
             val sampleRate = format.getInteger(MediaFormat.KEY_SAMPLE_RATE)
             val channelCount = format.getInteger(MediaFormat.KEY_CHANNEL_COUNT)
 
-            // 初始化 EBU R128
-            DynaCtrl.sNewEbuR128(sampleRate, channelCount)
+            Log.d(TAG, "解码：$filePath，$mime，${sampleRate}Hz，${channelCount}ch")
+            // 2. 初始化并启动解码器
+            extractor.selectTrack(trackIndex)
+            codec = MediaCodec.createDecoderByType(mime).apply {
+                configure(format, null, null, 0)
+                start()
+            }
 
-            // 创建并配置解码器
-            codec = createOptimizedDecoder(mime, format)
+            // 3. 执行解码循环
+            val pcmChunks = decodeAllFrames(extractor, codec)
+            // 4. 合并解码后的数据块
+            if (pcmChunks.isEmpty()) {
+                Log.w(TAG, "啊空一个：$filePath")
+                return null
+            }
 
-            // 使用异步模式解码
-            return decodeAsync(codec, extractor)
+            val totalSamples = pcmChunks.sumOf { it.size }
+            val finalPcmData = FloatArray(totalSamples)
+            var currentPosition = 0
+            for (chunk in pcmChunks) {
+                System.arraycopy(chunk, 0, finalPcmData, currentPosition, chunk.size)
+                currentPosition += chunk.size
+            }
+
+            Log.d(TAG, "成功啊：${finalPcmData.size}个")
+            return AudioData(finalPcmData, sampleRate, channelCount)
+        } catch (e: Exception) {
+            Log.e(TAG, "妈的解码：$filePath", e)
+            return null
         } finally {
+            // 5. 确保资源被释放
             codec?.stop()
             codec?.release()
-            extractor.release()
-        }
-    }
-
-    private fun createOptimizedDecoder(mime: String, format: MediaFormat): MediaCodec {
-        val codec = MediaCodec.createDecoderByType(mime)
-
-        // TODO：优化配置
-        /*format.apply {
-            // 设置最高优先级
-            setInteger(MediaFormat.KEY_PRIORITY, 0)
-            // 低延迟模式
-            try {
-                setInteger(MediaFormat.KEY_LOW_LATENCY, 1)
-            } catch (e: Exception) {
-                Log.w(TAG, "有些设备不支持低延迟", e)
-            }
-
-            // 增大输入缓冲区
-            try {
-                setInteger(MediaFormat.KEY_MAX_INPUT_SIZE, 2 * 1024 * 1024)
-            } catch (e: Exception) {
-                Log.w(TAG, "有些设备不支持大缓冲区", e)
-            }
-        }*/
-
-        codec.configure(format, null, null, 0)
-
-        return codec
-    }
-
-    private fun decodeAsync(
-        codec: MediaCodec,
-        extractor: MediaExtractor
-    ): Float {
-        val latch = CountDownLatch(1)
-        val tempBuffer = bufferPool.acquire()
-        var hasError = false
-
-        // 关键修复：创建后台 Handler 用于回调
-        val handlerThread = HandlerThread("MediaCodecCallback").apply { start() }
-        val callbackHandler = Handler(handlerThread.looper)
-
-        try {
-            // 异步回调处理
-            codec.setCallback(object : MediaCodec.Callback() {
-                override fun onInputBufferAvailable(codec: MediaCodec, index: Int) {
-                    try {
-                        val inputBuffer = codec.getInputBuffer(index) ?: return
-                        val sampleSize = extractor.readSampleData(inputBuffer, 0)
-
-                        if (sampleSize < 0) {
-                            // 输入结束
-                            codec.queueInputBuffer(
-                                index, 0, 0, 0,
-                                MediaCodec.BUFFER_FLAG_END_OF_STREAM
-                            )
-                        } else {
-                            codec.queueInputBuffer(
-                                index, 0, sampleSize,
-                                extractor.sampleTime, 0
-                            )
-                            extractor.advance()
-                        }
-                    } catch (e: Exception) {
-                        Log.w(TAG, "输入可用时错误", e)
-                        hasError = true
-                        latch.countDown()
-                    }
-                }
-
-                override fun onOutputBufferAvailable(
-                    codec: MediaCodec,
-                    index: Int,
-                    info: MediaCodec.BufferInfo
-                ) {
-                    try {
-                        if (info.size > 0) {
-                            val outputBuffer = codec.getOutputBuffer(index) ?: return
-
-                            // 直接处理或通过临时 buffer
-
-                            // 最优：MediaCodec 输出就是 Direct，直接传
-                            if (outputBuffer.isDirect) feedToNative(outputBuffer)
-                            // 需要转换：拷贝到 DirectBuffer
-                            else transferToDirectBuffer(outputBuffer, tempBuffer)
-                        }
-
-                        codec.releaseOutputBuffer(index, false)
-
-                        if (info.flags and MediaCodec.BUFFER_FLAG_END_OF_STREAM != 0) latch.countDown()
-                    } catch (e: Exception) {
-                        Log.w(TAG, "输出可用时错误", e)
-                        hasError = true
-                        latch.countDown()
-                    }
-                }
-
-                override fun onError(codec: MediaCodec, e: MediaCodec.CodecException) {
-                    Log.w(TAG, "耍赖", e)
-                    hasError = true
-                    latch.countDown()
-                }
-
-                override fun onOutputFormatChanged(codec: MediaCodec, format: MediaFormat) {
-                    // 格式变化，通常不需要处理
-                }
-            }, callbackHandler)
-
-            codec.start()
-
-            // 等待解码完成，设置超时防止卡死
-            val timeout = latch.await(5, TimeUnit.MINUTES)
-
-            return if (!timeout || hasError) (-70f).also { Log.w(TAG, "超时或有错") }
-            else DynaCtrl.sFinalizeEbuR128()
-        } finally {
-            bufferPool.release(tempBuffer)
-            handlerThread.quitSafely() // 清理后台线程
+            extractor?.release()
         }
     }
 
     /**
-     * 将数据喂给 native (优化版：分块传输大 buffer)
+     * 循环处理所有音频帧，直到流结束。
      */
-    private fun feedToNative(buffer: ByteBuffer) {
-        // 如果 buffer 太大，分块传输避免 native 层一次性处理太多
-        val maxChunkSize = 1024 * 1024 // 1MB per chunk
+    private fun decodeAllFrames(extractor: MediaExtractor, codec: MediaCodec): List<FloatArray> {
+        val decodedChunks = mutableListOf<FloatArray>()
+        val bufferInfo = MediaCodec.BufferInfo()
+        var isInputStreamEnded = false
+        var isOutputStreamEnded = false
+        while (!isOutputStreamEnded) {
+            // 向解码器提供输入数据
+            if (!isInputStreamEnded) {
+                val inputBufferIndex = codec.dequeueInputBuffer(TIMEOUT_US)
+                if (inputBufferIndex >= 0) {
+                    val inputBuffer = codec.getInputBuffer(inputBufferIndex)!!
+                    val sampleSize = extractor.readSampleData(inputBuffer, 0)
+                    if (sampleSize < 0) {
+                        codec.queueInputBuffer(inputBufferIndex, 0, 0, 0, MediaCodec.BUFFER_FLAG_END_OF_STREAM)
+                        isInputStreamEnded = true
+                    } else {
+                        codec.queueInputBuffer(inputBufferIndex, 0, sampleSize, extractor.sampleTime, 0)
+                        extractor.advance()
+                    }
+                }
+            }
 
-        val originalPosition = buffer.position()
-        val originalLimit = buffer.limit()
+            // 从解码器获取输出数据
+            val outputBufferIndex = codec.dequeueOutputBuffer(bufferInfo, TIMEOUT_US)
+            when {
+                outputBufferIndex >= 0 -> {
+                    val outputBuffer = codec.getOutputBuffer(outputBufferIndex)!!
+                    if (bufferInfo.size > 0) {
+                        // 假设输出为 16-bit PCM，这是最常见的情况
+                        val pcmChunk = convertPcm16BitToFloat(outputBuffer, bufferInfo.size)
+                        decodedChunks.add(pcmChunk)
+                    }
+                    codec.releaseOutputBuffer(outputBufferIndex, false)
 
-        var position = originalPosition
-        while (position < originalLimit) {
-            val remaining = originalLimit - position
-            val chunkSize = min(remaining, maxChunkSize)
+                    if ((bufferInfo.flags and MediaCodec.BUFFER_FLAG_END_OF_STREAM) != 0) isOutputStreamEnded = true
+                }
 
-            buffer.position(position)
-            buffer.limit(position + chunkSize)
-
-            // 传给 native
-            DynaCtrl.sAddEbuR128Samples(buffer)
-
-            position += chunkSize
+                outputBufferIndex == MediaCodec.INFO_OUTPUT_FORMAT_CHANGED ->
+                    Log.d(TAG, "格式啊改变：${codec.outputFormat}")
+            }
         }
-
-        // 恢复原始状态
-        buffer.position(originalPosition)
-        buffer.limit(originalLimit)
+        return decodedChunks
     }
 
     /**
-     * 将非 Direct 的 ByteBuffer 转换到 DirectBuffer
+     * 查找第一个音频轨道并返回其索引和格式。
      */
-    private fun transferToDirectBuffer(source: ByteBuffer, directBuffer: ByteBuffer) {
-        val floatSource = source.asFloatBuffer()
-
-        while (floatSource.hasRemaining()) {
-            directBuffer.clear()
-
-            // 计算本次能拷贝多少
-            val remainingFloats = floatSource.remaining()
-            val bufferCapacityFloats = directBuffer.remaining() / 4
-            val chunkFloats = min(remainingFloats, bufferCapacityFloats)
-
-            // 批量拷贝
-            repeat(chunkFloats) { directBuffer.putFloat(floatSource.get()) }
-
-            directBuffer.flip()
-            DynaCtrl.sAddEbuR128Samples(directBuffer)
-        }
-    }
-
-    private fun findAudioTrack(extractor: MediaExtractor): Int? {
+    private fun findAudioTrackFormat(extractor: MediaExtractor): Pair<Int, MediaFormat>? {
         for (i in 0 until extractor.trackCount) {
             val format = extractor.getTrackFormat(i)
-            val mime = format.getString(MediaFormat.KEY_MIME)
-            if (mime?.startsWith("audio/") == true) return i
+            if (format.getString(MediaFormat.KEY_MIME)?.startsWith("audio/") == true) return i to format
         }
 
         return null
+    }
+
+    /**
+     * 将解码器输出的 16-bit PCM ByteBuffer 转换为 FloatArray。
+     * 每个样本从 [-32768, 32767] 范围的 short 转换为 [-1.0, 1.0] 范围的 float。
+     */
+    private fun convertPcm16BitToFloat(buffer: ByteBuffer, size: Int): FloatArray {
+        val shortBuffer = buffer.order(ByteOrder.nativeOrder()).asShortBuffer()
+        val numSamples = size / 2
+        val floatSamples = FloatArray(numSamples)
+
+        for (i in 0 until numSamples) floatSamples[i] = shortBuffer.get(i) / 32768f
+
+        return floatSamples
     }
 }

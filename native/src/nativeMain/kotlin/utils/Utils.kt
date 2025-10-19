@@ -87,33 +87,6 @@ object JniUtils {
             realEnv.ReleaseFloatArrayElements!!.invoke(this, nonNullJArr, elementsPtr, JNI_ABORT)
         }
     }
-
-    fun CPointer<JNIEnvVar>.directFloatBufferToArray(directBuffer: jobject?): FloatArray {
-        // 处理 null 输入，返回一个空数组，这比返回 null 更安全，避免了调用方的空检查
-        val nonNullJObj = directBuffer ?: return floatArrayOf().also {
-            Log.w(TAG, "Direct Buffer was null, returning empty array")
-        }
-
-        // 获取实际的 JNIEnv 结构体指针
-        val realEnv = pointed.pointed!!
-
-        val elementsPtr = realEnv.GetDirectBufferAddress!!.invoke(this, nonNullJObj) as? CPointer<jfloatVar>
-            ?: return floatArrayOf().also { Log.e(TAG, "JNI GetDirectBufferAddress failed to get ptr") }
-
-        val capacityL = realEnv.GetDirectBufferCapacity!!.invoke(this, directBuffer)
-
-        Log.d(TAG,"原始大小：$capacityL")
-
-        val capacity = capacityL.toInt()
-        if (capacity == 0) return floatArrayOf()
-
-        // 创建一个 Kotlin FloatArray
-        val kotlinArray = FloatArray(capacity)
-        // 将数据从 C 指针复制到 Kotlin 数组
-        for (i in 0 until capacity) kotlinArray[i] = elementsPtr[i]
-
-        return kotlinArray
-    }
 }
 
 /**

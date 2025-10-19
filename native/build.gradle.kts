@@ -7,7 +7,8 @@ kotlin {
     val where = project.rootDir.toString().replace('\\', '/')
 
     mapOf(
-        androidNativeArm32() to "armeabi-v7a", androidNativeArm64() to "arm64-v8a",
+        androidNativeArm32() to "armeabi-v7a",
+        androidNativeArm64() to "arm64-v8a",
         androidNativeX64() to "x86_64",
     ).forEach { (target, archName) ->
         target.compilations.getByName("main") {

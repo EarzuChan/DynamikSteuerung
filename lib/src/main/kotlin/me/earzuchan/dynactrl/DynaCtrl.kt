@@ -15,22 +15,6 @@ object DynaCtrl {
     @JvmStatic
     external fun nativeCalculateLoudness(audioArr: FloatArray, sampleRate: Int, channelCount: Int): Float
 
-    // 测试
-
-    @JvmStatic
-    external fun nativeIncreaseAndGet(): Int
-
-    // 特殊
-
-    @JvmStatic
-    external fun sNewEbuR128(sampleRate: Int, channelCount: Int)
-
-    @JvmStatic
-    external fun sAddEbuR128Samples(directBuffer: ByteBuffer)
-
-    @JvmStatic
-    external fun sFinalizeEbuR128(): Float
-
     // 初始化
 
     fun init() {

@@ -46,20 +46,17 @@ val buildAndCopyNativeLibs = tasks.register("buildAndCopyNativeLibs") {
 
     // 依赖 native 项目的架构构建任务
     dependsOn(nativeProject.tasks.named("linkReleaseSharedAndroidNativeX64"))
-    // dependsOn(nativeProject.tasks.named("linkReleaseSharedAndroidNativeArm32"))
-    // dependsOn(nativeProject.tasks.named("linkReleaseSharedAndroidNativeArm64"))
+    dependsOn(nativeProject.tasks.named("linkReleaseSharedAndroidNativeArm32"))
+    dependsOn(nativeProject.tasks.named("linkReleaseSharedAndroidNativeArm64"))
 
     doLast {
         val libJNILibsDir = project.layout.projectDirectory.dir("src/main/jniLibs").asFile
 
-        // 先删除旧的 CHECK：暂时不
-        // libJNILibsDir.takeIf { it.exists() }?.deleteRecursively()
-
         // 定义架构映射（从 native build path 到 JNI libs path）
         val architectureMappings = mapOf(
             "androidNativeX64" to "x86_64",
-            //  "androidNativeArm32" to "armeabi-v7a",
-            // "androidNativeArm64" to "arm64-v8a",
+            "androidNativeArm32" to "armeabi-v7a",
+            "androidNativeArm64" to "arm64-v8a",
         )
 
         // 对于每个架构，复制 libdynactrl.so 到对应的 JNI libs 目录
@@ -81,8 +78,5 @@ val buildAndCopyNativeLibs = tasks.register("buildAndCopyNativeLibs") {
                 }
             }
         }
-
-        // 清理Build目录 CHECK：必要吗
-        // nativeProject.file("build/bin").takeIf { it.exists() }?.deleteRecursively()
     }
 }
