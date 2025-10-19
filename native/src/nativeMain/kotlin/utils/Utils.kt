@@ -32,7 +32,7 @@ object JniUtils {
 
     // 定义一个接受 JNIEnv* 和 jstring 的 native 函数
     fun CPointer<JNIEnvVar>.getString(jStr: jstring?): String? {
-        val nonNullJStr = jStr ?: return null.also { Log.w(TAG, "Input jstr was null") }
+        val nonNullJStr = jStr ?: return null.also { Log.w(TAG, "Input jStr was null") }
         val realEnv = pointed.pointed!!
 
         val utfChars = realEnv.GetStringUTFChars!!(this, nonNullJStr, null) ?: return null.also {
@@ -50,70 +50,69 @@ object JniUtils {
 
         return kStr
     }
-}
 
-/**
- * 带抗混叠的降采样器
- */
-class AntiAliasingDownsampler(private val ratio: Int, private val channels: Int, sampleRate: Int) {
-    private val lowpassFilter = LowpassFilter(
-        sampleRate = sampleRate,
-        channels = channels,
-        freq = sampleRate.toFloat() / (2 * ratio /* * 1.1f */) // TODO：响度计算值确和这个有关，越低越大
-    )
-
-    fun process(input: FloatArray): FloatArray {
-        if (input.isEmpty()) return floatArrayOf()
-
-        // 先低通滤波防混叠
-        val filtered = lowpassFilter.process(input)
-
-        // 降采样
-        val frames = filtered.size / channels
-        val outputFrames = frames / ratio
-        val output = FloatArray(outputFrames * channels)
-
-        // 优化：减少乘法运算
-        var outputIndex = 0
-        for (frame in 0 until outputFrames) {
-            val sourceIndex = frame * ratio * channels
-            for (ch in 0 until channels) output[outputIndex++] = filtered[sourceIndex + ch]
+    fun CPointer<JNIEnvVar>.getFloatArray(jArr: jfloatArray?): FloatArray {
+        // 处理 null 输入，返回一个空数组，这比返回 null 更安全，避免了调用方的空检查
+        val nonNullJArr = jArr ?: return floatArrayOf().also {
+            Log.w(TAG, "Input jfloatArray was null, returning empty array")
         }
 
-        return output
-    }
-}
+        // 获取实际的 JNIEnv 结构体指针
+        val realEnv = pointed.pointed!!
 
-/**
- * 修正后的环形缓冲区 - 防止意外覆盖
- */
-class CircularBuffer(private val capacity: Int) {
-    private val buffer = FloatArray(capacity)
-    private var head = 0
-    private var tail = 0
-    private var currentSize = 0
+        // 调用 JNI 函数获取指向数组元素的 C 指针
+        // 第三个参数(isCopy)在这里我们不关心，传入 null 即可
 
-    val size: Int get() = currentSize
+        // 失败时返回空数组
+        val elementsPtr = realEnv.GetFloatArrayElements!!.invoke(this, nonNullJArr, null)
+            ?: return floatArrayOf().also { Log.e(TAG, "JNI GetFloatArrayElements failed to get pointer") }
 
-    fun add(sample: Float) {
-        if (currentSize < capacity) {
-            buffer[tail] = sample
-            tail = (tail + 1) % capacity
-            currentSize++
-        } else {
-            throw IllegalStateException("Buffer is full! Cannot add more samples without removing first.")
+        // 检查 JNI 调用是否失败 (例如，内存不足)
+        // 使用 try...finally 确保资源总是被释放
+        try {
+            // 获取数组的长度
+            val length = realEnv.GetArrayLength!!.invoke(this, nonNullJArr)
+            if (length == 0) return floatArrayOf()
+
+            // 创建一个 Kotlin FloatArray
+            val kotlinArray = FloatArray(length)
+            // 将数据从 C 指针复制到 Kotlin 数组
+            for (i in 0 until length) kotlinArray[i] = elementsPtr[i]
+
+            return kotlinArray
+        } finally {
+            //释放 C 指针
+            // 因为我们只是读取数据，没有做任何修改，所以使用 JNI_ABORT 是最高效的。
+            // 它告诉 JVM：“我没有修改任何东西，请直接释放内存，无需将数据复制回去。”
+            realEnv.ReleaseFloatArrayElements!!.invoke(this, nonNullJArr, elementsPtr, JNI_ABORT)
         }
     }
 
-    fun removeFirst(count: Int) {
-        val actualCount = minOf(count, currentSize)
-        head = (head + actualCount) % capacity
-        currentSize -= actualCount
-    }
+    fun CPointer<JNIEnvVar>.directFloatBufferToArray(directBuffer: jobject?): FloatArray {
+        // 处理 null 输入，返回一个空数组，这比返回 null 更安全，避免了调用方的空检查
+        val nonNullJObj = directBuffer ?: return floatArrayOf().also {
+            Log.w(TAG, "Direct Buffer was null, returning empty array")
+        }
 
-    fun get(index: Int): Float {
-        if (index >= currentSize) throw IndexOutOfBoundsException()
-        return buffer[(head + index) % capacity]
+        // 获取实际的 JNIEnv 结构体指针
+        val realEnv = pointed.pointed!!
+
+        val elementsPtr = realEnv.GetDirectBufferAddress!!.invoke(this, nonNullJObj) as? CPointer<jfloatVar>
+            ?: return floatArrayOf().also { Log.e(TAG, "JNI GetDirectBufferAddress failed to get ptr") }
+
+        val capacityL = realEnv.GetDirectBufferCapacity!!.invoke(this, directBuffer)
+
+        Log.d(TAG,"原始大小：$capacityL")
+
+        val capacity = capacityL.toInt()
+        if (capacity == 0) return floatArrayOf()
+
+        // 创建一个 Kotlin FloatArray
+        val kotlinArray = FloatArray(capacity)
+        // 将数据从 C 指针复制到 Kotlin 数组
+        for (i in 0 until capacity) kotlinArray[i] = elementsPtr[i]
+
+        return kotlinArray
     }
 }
 
@@ -127,33 +126,6 @@ class CompleteKWeighting(sampleRate: Int, channels: Int) {
     fun process(input: FloatArray): FloatArray {
         val afterHighpass = highpass.process(input)
         return shelf.process(afterHighpass)
-    }
-}
-
-/**
- * 低通滤波器
- */
-class LowpassFilter(
-    sampleRate: Int,
-    private val channels: Int,
-    freq: Float
-) {
-    private val alpha = exp(-2f * PI * freq / sampleRate).toFloat()
-    private val prevOutput = FloatArray(channels)
-
-    fun process(input: FloatArray): FloatArray {
-        val output = FloatArray(input.size)
-        val frames = input.size / channels
-
-        for (frame in 0 until frames) {
-            for (ch in 0 until channels) {
-                val idx = frame * channels + ch
-                output[idx] = alpha * prevOutput[ch] + (1f - alpha) * input[idx]
-                prevOutput[ch] = output[idx]
-            }
-        }
-
-        return output
     }
 }
 

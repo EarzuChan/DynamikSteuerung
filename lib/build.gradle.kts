@@ -13,7 +13,7 @@ android {
         minSdk = 21
         version = "1.0"
 
-        ndk { abiFilters += listOf("armeabi-v7a", "arm64-v8a", "x86", "x86_64") }
+        ndk { abiFilters += listOf("armeabi-v7a", "arm64-v8a", "x86_64") }
     }
 
     sourceSets { getByName("main") { jniLibs.srcDirs("src/main/jniLibs") } }
@@ -46,9 +46,8 @@ val buildAndCopyNativeLibs = tasks.register("buildAndCopyNativeLibs") {
 
     // 依赖 native 项目的架构构建任务
     dependsOn(nativeProject.tasks.named("linkReleaseSharedAndroidNativeX64"))
-    dependsOn(nativeProject.tasks.named("linkReleaseSharedAndroidNativeX86"))
-    dependsOn(nativeProject.tasks.named("linkReleaseSharedAndroidNativeArm32"))
-    dependsOn(nativeProject.tasks.named("linkReleaseSharedAndroidNativeArm64"))
+    // dependsOn(nativeProject.tasks.named("linkReleaseSharedAndroidNativeArm32"))
+    // dependsOn(nativeProject.tasks.named("linkReleaseSharedAndroidNativeArm64"))
 
     doLast {
         val libJNILibsDir = project.layout.projectDirectory.dir("src/main/jniLibs").asFile
@@ -58,8 +57,9 @@ val buildAndCopyNativeLibs = tasks.register("buildAndCopyNativeLibs") {
 
         // 定义架构映射（从 native build path 到 JNI libs path）
         val architectureMappings = mapOf(
-            "androidNativeX64" to "x86_64", "androidNativeX86" to "x86",
-            "androidNativeArm32" to "armeabi-v7a", "androidNativeArm64" to "arm64-v8a",
+            "androidNativeX64" to "x86_64",
+            //  "androidNativeArm32" to "armeabi-v7a",
+            // "androidNativeArm64" to "arm64-v8a",
         )
 
         // 对于每个架构，复制 libdynactrl.so 到对应的 JNI libs 目录
@@ -68,7 +68,7 @@ val buildAndCopyNativeLibs = tasks.register("buildAndCopyNativeLibs") {
 
             if (!sourceFile.exists()) println("${sourceFile.path}不存在，${jniArch}的构建可能失败了")
             else {
-                val targetDir = File(libJNILibsDir,jniArch)
+                val targetDir = File(libJNILibsDir, jniArch)
 
                 println("正在把${sourceFile.path}复制到$targetDir")
 

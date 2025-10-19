@@ -8,7 +8,7 @@ kotlin {
 
     mapOf(
         androidNativeArm32() to "armeabi-v7a", androidNativeArm64() to "arm64-v8a",
-        androidNativeX86() to "x86", androidNativeX64() to "x86_64",
+        androidNativeX64() to "x86_64",
     ).forEach { (target, archName) ->
         target.compilations.getByName("main") {
             cinterops {
@@ -29,7 +29,7 @@ kotlin {
 
     sourceSets {
         nativeMain.dependencies {}
-        arrayOf(androidNativeArm32Main, androidNativeArm64Main, androidNativeX86Main, androidNativeX64Main).forEach {
+        arrayOf(androidNativeArm32Main, androidNativeArm64Main, androidNativeX64Main).forEach {
             it.get().dependsOn(nativeMain.get())
         }
     }
