@@ -33,7 +33,7 @@ The native module implements the core audio processing functionality using Kotli
 
 **EBU R128 Loudness Implementation**
 
-Located in `native/src/nativeMain/kotlin/Ebur128.kt`, this module provides:
+Located in `native/src/nativeMain/kotlin/EbuR128.kt`, this module provides:
 
 - Lightweight, self-contained EBU R128 implementation
 - Cross-platform compatibility (works on both Kotlin/Native and Kotlin/JVM)
@@ -43,7 +43,7 @@ Located in `native/src/nativeMain/kotlin/Ebur128.kt`, this module provides:
 ```kotlin
 // Core loudness calculation implementation
 class LightweightEbuR128(channels: Int, sampleRate: Int) {
-    fun addFrames(samples: FloatArray)
+    fun addSamples(samples: FloatArray)
     fun getIntegratedLoudness(): Float
 }
 ```
@@ -56,7 +56,7 @@ The build system automatically compiles native libraries for four Android archit
 - `arm64-v8a` (64-bit ARM)
 - `armeabi-v7a` (32-bit ARM)
 - `x86_64` (64-bit Intel)
-- `x86` (32-bit Intel)
+- NO `x86`: Outdated!
 
 **Automated Build Pipeline**
 
@@ -71,7 +71,7 @@ Configured in `lib/build.gradle.kts`:
 **Core API Interface**
 
 ```kotlin
-class LightweightLoudnessAnalyzer {
+object LightweightLoudnessAnalyzer {
     fun analyzeFile(audioFile: File): AudioLoudnessInfo
 }
 ```
@@ -110,7 +110,6 @@ The demo application showcases practical usage:
 - File-based loudness analysis
 - Real-time playback with loudness normalization
 - ExoPlayer integration demonstration
-- Live loudness visualization
 - Audio volume balancing across tracks
 
 ### Technical Deep Dive
@@ -148,12 +147,9 @@ The implementation follows ITU-R BS.1770-4 standard:
 ### Usage Example
 
 ```kotlin
-// Initialize analyzer
-val analyzer = LightweightLoudnessAnalyzer()
-
 // Analyze audio file
 val audioFile = File("/path/to/audio.wav")
-val loudnessInfo = analyzer.analyzeFile(audioFile)
+val loudnessInfo = LightweightLoudnessAnalyzer.analyzeFile(audioFile.absolutePath)
 
 // Integrate with ExoPlayer: Add the processor to your ExoPlayer
 

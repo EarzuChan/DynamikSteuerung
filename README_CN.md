@@ -33,7 +33,7 @@
 
 **EBU R128响度算法实现**
 
-位于`native/src/nativeMain/kotlin/Ebur128.kt`，提供：
+位于`native/src/nativeMain/kotlin/EbuR128.kt`，提供：
 
 - 轻量级、自包含的EBU R128实现
 - 跨平台兼容性（支持Kotlin/Native和Kotlin/JVM）
@@ -43,7 +43,7 @@
 ```kotlin
 // 核心响度计算实现
 class LightweightEbuR128(channels: Int, sampleRate: Int) {
-    fun addFrames(samples: FloatArray)
+    fun addSamples(samples: FloatArray)
     fun getIntegratedLoudness(): Float
 }
 ```
@@ -56,7 +56,7 @@ class LightweightEbuR128(channels: Int, sampleRate: Int) {
 - `arm64-v8a`（64位ARM）
 - `armeabi-v7a`（32位ARM）
 - `x86_64`（64位Intel）
-- `x86`（32位Intel）
+- 无`x86`：过时了！
 
 **自动化构建流水线**
 
@@ -71,7 +71,7 @@ class LightweightEbuR128(channels: Int, sampleRate: Int) {
 **核心API接口**
 
 ```kotlin
-class LightweightLoudnessAnalyzer {
+object LightweightLoudnessAnalyzer {
     fun analyzeFile(audioFile: File): AudioLoudnessInfo
 }
 ```
@@ -98,7 +98,7 @@ processor.setCurrentTrackLoudness(loudnessInfo)
 
 ```kotlin
 data class AudioLoudnessInfo(
-    val lufs: Float,  // LUFS
+    val lufs: Float, // LUFS
 )
 ```
 
@@ -148,12 +148,9 @@ typedef struct sf_priv_tag {
 ### 使用示例
 
 ```kotlin
-// 初始化分析器
-val analyzer = LightweightLoudnessAnalyzer()
-
 // 分析音频文件
 val audioFile = File("/path/to/audio.wav")
-val loudnessInfo = analyzer.analyzeFile(audioFile)
+val loudnessInfo = LightweightLoudnessAnalyzer.analyzeFile(audioFile.absolutePath)
 
 // 与ExoPlayer集成：给您的ExoPlayer添加该处理器
 
