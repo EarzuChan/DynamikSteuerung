@@ -11,7 +11,7 @@ android {
 
     defaultConfig {
         minSdk = 21
-        version = "1.0"
+        version = "1.5"
 
         ndk { abiFilters += listOf("armeabi-v7a", "arm64-v8a", "x86_64") }
     }
